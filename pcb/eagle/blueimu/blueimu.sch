@@ -15771,8 +15771,8 @@ Source: http://www.onsemi.com/pub/Collateral/LP2950-D.PDF</description>
 <plain>
 <text x="-15.24" y="-165.1" size="1.778" layer="91">Note: GY521 has on-board pull-up resistors for SCL and SDA.</text>
 <text x="20.32" y="58.42" size="1.778" layer="91">Battery undervoltage signaling and over-discharge protection
-- LED goes off at 3.3 V
-- Battery disconnected from load at 3.0 V (typical value for LiPO)
+- LED goes off at 3.3 V (LED on = battery good)
+- Battery is disconnected from load at 3.0 V (typical value for LiPO)
 </text>
 </plain>
 <instances>
