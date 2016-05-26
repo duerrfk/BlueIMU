@@ -15733,7 +15733,7 @@ Source: http://www.onsemi.com/pub/Collateral/LP2950-D.PDF</description>
 <part name="LED1" library="led" deviceset="LED" device="3MM"/>
 <part name="R7" library="rcl" deviceset="R-EU_" device="0207/7" value="150"/>
 <part name="GND1" library="supply1" deviceset="GND" device=""/>
-<part name="R8" library="rcl" deviceset="R-EU_" device="0207/7" value="1M"/>
+<part name="R8" library="rcl" deviceset="R-EU_" device="0207/7" value="470k"/>
 <part name="J1" library="con-molex" deviceset="22-?-02" device="27-2021"/>
 <part name="IC2" library="atmel" deviceset="MEGA8-P" device="" value="ATMEGA328P"/>
 <part name="GND2" library="supply1" deviceset="GND" device=""/>
@@ -15765,6 +15765,7 @@ Source: http://www.onsemi.com/pub/Collateral/LP2950-D.PDF</description>
 <part name="GND12" library="supply1" deviceset="GND" device=""/>
 <part name="R10" library="rcl" deviceset="R-EU_" device="0207/7" value="10k"/>
 <part name="GND13" library="supply1" deviceset="GND" device=""/>
+<part name="C7" library="rcl" deviceset="C-EU" device="050-024X044" value="100nF"/>
 </parts>
 <sheets>
 <sheet>
@@ -15824,6 +15825,7 @@ Source: http://www.onsemi.com/pub/Collateral/LP2950-D.PDF</description>
 <instance part="GND12" gate="1" x="116.84" y="-165.1"/>
 <instance part="R10" gate="G$1" x="106.68" y="-154.94" rot="R270"/>
 <instance part="GND13" gate="1" x="106.68" y="-165.1"/>
+<instance part="C7" gate="G$1" x="114.3" y="15.24"/>
 </instances>
 <busses>
 </busses>
@@ -15893,11 +15895,15 @@ Source: http://www.onsemi.com/pub/Collateral/LP2950-D.PDF</description>
 <junction x="99.06" y="2.54"/>
 <pinref part="Q1" gate="G$1" pin="S"/>
 <wire x1="124.46" y1="22.86" x2="124.46" y2="2.54" width="0.1524" layer="91"/>
-<wire x1="124.46" y1="2.54" x2="99.06" y2="2.54" width="0.1524" layer="91"/>
+<wire x1="124.46" y1="2.54" x2="114.3" y2="2.54" width="0.1524" layer="91"/>
 <pinref part="R4" gate="G$1" pin="1"/>
+<wire x1="114.3" y1="2.54" x2="99.06" y2="2.54" width="0.1524" layer="91"/>
 <wire x1="30.48" y1="5.08" x2="30.48" y2="2.54" width="0.1524" layer="91"/>
 <wire x1="30.48" y1="2.54" x2="50.8" y2="2.54" width="0.1524" layer="91"/>
 <junction x="50.8" y="2.54"/>
+<pinref part="C7" gate="G$1" pin="2"/>
+<wire x1="114.3" y1="10.16" x2="114.3" y2="2.54" width="0.1524" layer="91"/>
+<junction x="114.3" y="2.54"/>
 </segment>
 <segment>
 <pinref part="J1" gate="-1" pin="S"/>
@@ -15937,6 +15943,8 @@ Source: http://www.onsemi.com/pub/Collateral/LP2950-D.PDF</description>
 <wire x1="114.3" y1="25.4" x2="119.38" y2="25.4" width="0.1524" layer="91"/>
 <wire x1="114.3" y1="38.1" x2="114.3" y2="25.4" width="0.1524" layer="91"/>
 <junction x="114.3" y="25.4"/>
+<pinref part="C7" gate="G$1" pin="1"/>
+<wire x1="114.3" y1="17.78" x2="114.3" y2="25.4" width="0.1524" layer="91"/>
 </segment>
 </net>
 <net name="N$12" class="0">
