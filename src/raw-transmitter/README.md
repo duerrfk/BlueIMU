@@ -1,4 +1,4 @@
-raw-transmitter transmits raw measurements from the accelerometer and gyroscope of the MPU6050 IMU used by the BlueIMU device via Bluetooth (serial profile). 
+Raw-Transmitter transmits raw measurements from the accelerometer and gyroscope of the MPU6050 IMU used by the BlueIMU device via Bluetooth (serial profile; not Bluetooth Low Energy (BLE)!). 
 
 The implementation is based the Arduino platform and the MPU6050 code by Jeff Rowberg.
 
@@ -39,8 +39,7 @@ The sampling rate can be adjusted by the SAMPLING_PERIOD definition.
 
 The MPU 6050 features a low-pass filter. You can set the filter by defining DLPF according to the following table:
 
-
-              |   ACCELEROMETER    |           GYROSCOPE
+             |   ACCELEROMETER    |           GYROSCOPE
     DLPF_CFG | Bandwidth | Delay  | Bandwidth | Delay  | Sample Rate
     ---------+-----------+--------+-----------+--------+-------------
     0        | 260Hz     | 0ms    | 256Hz     | 0.98ms | 8kHz

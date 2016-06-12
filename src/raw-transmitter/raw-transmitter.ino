@@ -66,10 +66,12 @@ volatile bool is_sample_due = false;
 MPU6050 imu;
 
 /**
- * Calculation of a 16 bit checksum. 
+ * Calculation of 16 bit checksum. 
  * 
- * This implementation uses the same algorithm as uses by IP to calculate
- * IP header checksums. Performing the same calculation over the data +
+ * This implementation uses the same algorithm as IP to calculate
+ * IP header checksums. 
+ * 
+ * Performing the same calculation over the data *and*
  * checksum should yield 0 in case of no error.
  * 
  * The following code is adapted from Gary R. Wright, W. Richard Stevens: 
@@ -109,7 +111,7 @@ uint16_t checksum(const uint8_t *data, size_t len)
 void send_frame(int16_t accelX, int16_t accelY, int16_t accelZ,
                 int16_t gyroX, int16_t gyroY, int16_t gyroZ, uint32_t timestamp) 
 {
-    uint8_t frame[16];
+    uint8_t frame[20];
 
     // Add start of frame
     frame[0] = start_of_frame[0];
@@ -141,18 +143,18 @@ void send_frame(int16_t accelX, int16_t accelY, int16_t accelZ,
     
     // Add checksum
     uint16_t csum = checksum(frame, 18);
-    frame[14] = (csum>>8);
-    frame[15] = (csum&0xFF);
+    frame[18] = (csum>>8);
+    frame[19] = (csum&0xFF);
 
     // Send frame
-    Serial.write(frame, 16);
+    Serial.write(frame, 20);
 }
 
 /**
  * Called in case of fatal error preventing continuation.
  * 
  * Function will never return and signal fatal error over
- * Bluetooth.
+ * Bluetooth by sending empty frames in an endless sequence.
  */
 void die()
 {
