@@ -1,4 +1,25 @@
-#include "TimerOne.h"
+/**
+ * This file is part of BlueIMU.
+ * 
+ * Copyright 2016 Frank Duerr
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ * 
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+ 
+#include <TimerOne.h>
+#include <Wire.h>
+#include "I2Cdev.h"
+#include "MPU6050.h"
 
 // The pin where the LED output of the Bluetooth module is connected.
 // This pin is used to detect the connection status.
@@ -6,49 +27,235 @@
 #define PIN_LED 2
 
 // Sampling period in microseconds
-#define SAMPLING_PERIOD 1000000
+#define SAMPLING_PERIOD 5000
 
 // The baud rate of the serial connection to the Bluetooth module. 
 // The MCU is running at 7.3728 MHz. Thus, 230400 baud = 7.3728/32 allows for 
-// perfect timing for the serial communication. 
+// perfect timing for serial communication. 
 #define BAUD_RATE 230400
+
+// Configuration of digital low pass filter of IMU according to the
+// following table:
+//
+//          |   ACCELEROMETER    |           GYROSCOPE
+// DLPF_CFG | Bandwidth | Delay  | Bandwidth | Delay  | Sample Rate
+// ---------+-----------+--------+-----------+--------+-------------
+// 0        | 260Hz     | 0ms    | 256Hz     | 0.98ms | 8kHz
+// 1        | 184Hz     | 2.0ms  | 188Hz     | 1.9ms  | 1kHz
+// 2        | 94Hz      | 3.0ms  | 98Hz      | 2.8ms  | 1kHz
+// 3        | 44Hz      | 4.9ms  | 42Hz      | 4.8ms  | 1kHz
+// 4        | 21Hz      | 8.5ms  | 20Hz      | 8.3ms  | 1kHz
+// 5        | 10Hz      | 13.8ms | 10Hz      | 13.4ms | 1kHz
+// 6        | 5Hz       | 19.0ms | 5Hz       | 18.6ms | 1kHz
+// 7        |   -- Reserved --   |   -- Reserved --   | Reserved
+//
+// For instance, if you choose value 6, signals with frequency > 5 Hz
+// will be cut-off.
+#define DLPF 1
+
+// Start of frame pattern
+const uint8_t start_of_frame[] = {0x5A, 0xA5};
 
 volatile enum State {disconnected, connected} state = disconnected;  
 
 volatile bool is_sample_due = false;
 
-void setup() 
-{
-    // Enable internal pull-up resistor for RX on MCU side.
-    // The Bluetooth module does not seem to have push/pull drivers for TX. 
-    // Without pull-up resistor, the line stays at around 1.5 V in marking
-    // condition, which is too low.
-    //pinMode(0, INPUT_PULLUP);
-    Serial.begin(BAUD_RATE, SERIAL_8N1); 
-                
-    Timer1.initialize(SAMPLING_PERIOD);
+// The GY-521 board has a pull-down resistor connected to AD0,
+// so the address is 0x68 (default). Change to 0x69 if a pull-up is used instead.
+//MPU6050 imu(0x69);
+MPU6050 imu;
 
-    pinMode(PIN_LED, INPUT);
+/**
+ * Calculation of a 16 bit checksum. 
+ * 
+ * This implementation uses the same algorithm as uses by IP to calculate
+ * IP header checksums. Performing the same calculation over the data +
+ * checksum should yield 0 in case of no error.
+ * 
+ * The following code is adapted from Gary R. Wright, W. Richard Stevens: 
+ * TCP/IP Illustrated, Volume 2 (there called a "naive implementation"; 
+ * you can also find an optimized implementation there).
+ */
+uint16_t checksum(const uint8_t *data, size_t len)
+{
+     uint32_t sum = 0;
+     uint16_t *words = (uint16_t *) data;
+
+     while (len > 1) {
+         sum += *(words)++;
+         if (sum&0x80000000)
+             sum = (sum&0xFFFF) + (sum>>16);
+         len -= 2;
+     }
+
+     if (len)
+         sum += *((uint8_t *) words);
+     
+     while (sum>>16)
+         sum = (sum & 0xFFFF) + (sum >> 16);
+
+     // Note that we do not need to convert the sum to network byte order 
+     // if all 16 bit fields are given in network byte order.
+     // From RFC 1071: 
+     // "The sum of 16-bit integers can be computed in either byte order."
+     return ~sum;
 }
 
+/**
+ * Marshal data and send frame over serial connection to Bluetooth module.
+ * 
+ * All 16 bit values are sent in Big Endian (network) byte order.
+ */
+void send_frame(int16_t accelX, int16_t accelY, int16_t accelZ,
+                int16_t gyroX, int16_t gyroY, int16_t gyroZ) 
+{
+    uint8_t frame[16];
+
+    // Add start of frame
+    frame[0] = start_of_frame[0];
+    frame[1] = start_of_frame[1];
+
+    // Add values in Big Endian byte order
+    frame[2] = (accelX>>8);
+    frame[3] = (accelX&0xFF);
+
+    frame[4] = (accelY>>8);
+    frame[5] = (accelY&0xFF);
+
+    frame[6] = (accelZ>>8);
+    frame[7] = (accelZ&0xFF);
+
+    frame[8] = (gyroX>>8);
+    frame[9] = (gyroX&0xFF);
+
+    frame[10] = (gyroY>>8);
+    frame[11] = (gyroY&0xFF);
+    
+    frame[12] = (gyroZ>>8);
+    frame[13] = (gyroZ&0xFF);
+    
+    // Add checksum
+    uint16_t csum = checksum(frame, 14);
+    frame[14] = (csum>>8);
+    frame[15] = (csum&0xFF);
+
+    // Send frame
+    Serial.write(frame, 16);
+}
+
+/**
+ * Called in case of fatal error preventing continuation.
+ * 
+ * Function will never return and signal fatal error over
+ * Bluetooth.
+ */
+void die()
+{
+    uint8_t frame[2];
+    frame[0] = start_of_frame[0];
+    frame[1] = start_of_frame[1];
+    
+    while (1) {
+        // Send empty frames to signal exception
+        Serial.write(frame, 2);
+        delay(1000); 
+    }
+}
+
+/**
+ * Initial setup.
+ */
+void setup() 
+{
+    // Give components some time to start.
+    delay(2000);
+    
+    Serial.begin(BAUD_RATE, SERIAL_8N1); 
+
+    // Initialize sampling timer. Time is only activated
+    // when a connection is made via Bluetooth. So we only
+    // initialize the interval here.
+    Timer1.initialize(SAMPLING_PERIOD);
+
+    // With this pin, we can check the connection status.
+    pinMode(PIN_LED, INPUT);
+
+    // Initialize IMU
+
+    // Init I2C
+    Wire.begin();
+    
+    // Initialize device. 
+    // Default are the most sensitive settings:
+    // - acceleration: +/- 2g
+    // - gyro: +/- 250 degrees/sec
+    imu.initialize();
+     
+    // Set digital low-pass filter (DLPF)
+    //          |   ACCELEROMETER    |           GYROSCOPE
+    // DLPF_CFG | Bandwidth | Delay  | Bandwidth | Delay  | Sample Rate
+    // ---------+-----------+--------+-----------+--------+-------------
+    // 0        | 260Hz     | 0ms    | 256Hz     | 0.98ms | 8kHz
+    // 1        | 184Hz     | 2.0ms  | 188Hz     | 1.9ms  | 1kHz
+    // 2        | 94Hz      | 3.0ms  | 98Hz      | 2.8ms  | 1kHz
+    // 3        | 44Hz      | 4.9ms  | 42Hz      | 4.8ms  | 1kHz
+    // 4        | 21Hz      | 8.5ms  | 20Hz      | 8.3ms  | 1kHz
+    // 5        | 10Hz      | 13.8ms | 10Hz      | 13.4ms | 1kHz
+    // 6        | 5Hz       | 19.0ms | 5Hz       | 18.6ms | 1kHz
+    // 7        |   -- Reserved --   |   -- Reserved --   | Reserved
+    imu.setDLPFMode(DLPF);
+
+    unsigned int try_count = 0;
+    while (1) {
+        // Verify connection
+        if (imu.testConnection()) {
+            // All fine
+            break;
+        } else {
+            try_count++;
+        }
+        if (try_count > 3)
+            die();
+        delay(1000);
+    }
+}
+
+/**
+ * Interrupt routing for checking communication status.
+ * 
+ * Disconnections are signalled by low-level on PIN_LED.
+ */
 void led_isr()
 {
+    // We are now disconneted and can deregister ISR until
+    // another connection is made.
     detachInterrupt(digitalPinToInterrupt(PIN_LED));
     
-    // Detach timer interrupt to stop sampling
+    // Detach timer interrupt to stop sampling.
     Timer1.detachInterrupt();
     
     state = disconnected;
 }
 
+/**
+ * Interrupt routine of sampling timer.
+ */
 void sampling_timer_isr()
 {
     is_sample_due = true;
 }
 
-void take_sample()
+/**
+ * Take a sample (accelerometer & gyro) and send
+ * data to Bluetooth module.
+ */
+void take_sample_and_send()
 {
-    Serial.println("Hello");
+    int16_t axi, ayi, azi;
+    int16_t rxi, ryi, rzi;
+    imu.getMotion6(&axi, &ayi, &azi, &rxi, &ryi, &rzi); 
+
+    send_frame(axi, ayi, azi, rxi, ryi, rzi);  
 }
 
 void loop() 
@@ -82,7 +289,7 @@ void loop()
         break;
     case connected:
         if (is_sample_due) {
-            take_sample();
+            take_sample_and_send();
             is_sample_due = false;
         }
         break;
