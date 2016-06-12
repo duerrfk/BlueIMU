@@ -107,7 +107,7 @@ uint16_t checksum(const uint8_t *data, size_t len)
  * All 16 bit values are sent in Big Endian (network) byte order.
  */
 void send_frame(int16_t accelX, int16_t accelY, int16_t accelZ,
-                int16_t gyroX, int16_t gyroY, int16_t gyroZ) 
+                int16_t gyroX, int16_t gyroY, int16_t gyroZ, uint32_t timestamp) 
 {
     uint8_t frame[16];
 
@@ -133,9 +133,14 @@ void send_frame(int16_t accelX, int16_t accelY, int16_t accelZ,
     
     frame[12] = (gyroZ>>8);
     frame[13] = (gyroZ&0xFF);
+
+    frame[14] = (timestamp>>24);
+    frame[15] = ((timestamp>>16)&0xFF);
+    frame[16] = ((timestamp>>8)&0xFF);
+    frame[17] = (timestamp&0xFF);
     
     // Add checksum
-    uint16_t csum = checksum(frame, 14);
+    uint16_t csum = checksum(frame, 18);
     frame[14] = (csum>>8);
     frame[15] = (csum&0xFF);
 
@@ -177,7 +182,7 @@ void setup()
     // initialize the interval here.
     Timer1.initialize(SAMPLING_PERIOD);
 
-    // With this pin, we can check the connection status.
+    // With this pin, we check the connection status.
     pinMode(PIN_LED, INPUT);
 
     // Initialize IMU
@@ -254,8 +259,9 @@ void take_sample_and_send()
     int16_t axi, ayi, azi;
     int16_t rxi, ryi, rzi;
     imu.getMotion6(&axi, &ayi, &azi, &rxi, &ryi, &rzi); 
-
-    send_frame(axi, ayi, azi, rxi, ryi, rzi);  
+    uint32_t t = millis();
+    
+    send_frame(axi, ayi, azi, rxi, ryi, rzi, t);  
 }
 
 void loop() 
