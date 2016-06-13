@@ -1,0 +1,22 @@
+blueimu.name=BlueIMU Atmega 328P @ 7.3728 MHz
+
+blueimu.upload.tool=avrdude
+blueimu.upload.protocol=arduino
+blueimu.upload.maximum_size=32256
+blueimu.upload.maximum_data_size=2048
+blueimu.upload.speed=9600
+
+blueimu.build.mcu=atmega328p
+blueimu.build.f_cpu=7372800L
+blueimu.build.core=arduino:arduino
+blueimu.build.variant=arduino:standard
+blueimu.build.board=blueimu
+
+#blueimu.bootloader.low_fuses=0xDD
+#blueimu.bootloader.high_fuses=0xD9
+#blueimu.bootloader.extended_fuses=0x05
+#blueimu.bootloader.file=atmega/foo.hex
+#blueimu.bootloader.unlock_bits=0x3F
+#blueimu.bootloader.lock_bits=0x0F
+#blueimu.bootloader.tool=arduino:avrdude
+
