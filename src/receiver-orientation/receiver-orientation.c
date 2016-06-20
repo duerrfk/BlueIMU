@@ -29,8 +29,13 @@
 #include <stdint.h>
 #include "kalmanfilter.h"
 
-// Default baud rate.
-#define DEFAULT_BAUDRATE 230400
+#define FRAMESIZE 20
+#define MAX_FRAME_ERR 1
+
+enum States {synced, unsynced1, unsynced2} state;
+
+// Start of frame pattern
+const uint8_t start_of_frame[] = {0x5A, 0xA5};
 
 int serial = -1;
 FILE *out = NULL;
@@ -194,4 +199,56 @@ int main(int argc, char *argv[])
           die(-1);
      }
 
+     state = unsynced1;
+     uint8_t buffer[FRAMESIZE];
+     size_t nread, n;
+     unsigned int nframeerr;
+     while (1) {
+	  switch (state) {
+	  case unsynced1:
+	       if ((n = read(serial, &buffer[0], 1)) == -1) {
+		   perror("Error reading from serial port");
+		   die(-1);
+	       }
+	       if (n == 1 && buffer[0] == start_of_frame[0])
+		    state = unsynced2;
+	       break;
+	  case unsynced2:
+	       if ((n = read(serial, &buffer[1], 1)) == -1) {
+		    perror("Error reading from serial port");
+		    die(-1);
+	       }	    
+	       if (n == 1 && buffer[1] == start_of_frame[1]) {
+		    state = synced;
+		    nread = 2;
+		    nframeerr = 0;
+		    printf("synced\n"); // DEBUG
+	       }
+	       break;
+	  case synced:
+	       if ((n = read(serial, &buffer[nread], FRAMESIZE-nread)) == -1) {
+		    perror("Error reading from serial port");
+		    die(-1);
+	       }
+	       nread += n;
+	       if (nread == FRAMESIZE) {
+		    // Complete frame read.
+		    if (checksum(buffer, FRAMESIZE) != 0) {
+			 // Bad frame.
+			 nframeerr++;
+			 if (nframeerr > MAX_FRAME_ERR) {
+			      // Too many corrupt frames. Possibly out of sync.
+			      state = unsynced1;
+			      printf("UNSYNCED\n"); // DEBUG
+			 }
+		    } else {
+			 // Frame OK.
+			 // TODO: handle frame
+			 nframeerr = 0;
+			 nread = 0;
+		    }
+	       }
+	       break;
+	  }
+     }
 }
