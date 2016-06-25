@@ -80,6 +80,9 @@ MPU6050 imu;
  */
 uint16_t checksum(const uint8_t *data, size_t len)
 {
+     // Note that we do not need to consider byte order. From RFC 1071: 
+     // "The sum of 16-bit integers can be computed in either byte order."
+
      uint32_t sum = 0;
      uint16_t *words = (uint16_t *) data;
 
@@ -96,10 +99,6 @@ uint16_t checksum(const uint8_t *data, size_t len)
      while (sum>>16)
          sum = (sum & 0xFFFF) + (sum >> 16);
 
-     // Note that we do not need to convert the sum to network byte order 
-     // if all 16 bit fields are given in network byte order.
-     // From RFC 1071: 
-     // "The sum of 16-bit integers can be computed in either byte order."
      return ~sum;
 }
 
@@ -143,8 +142,12 @@ void send_frame(int16_t accelX, int16_t accelY, int16_t accelZ,
     
     // Add checksum
     uint16_t csum = checksum(frame, 18);
-    frame[18] = (csum>>8);
-    frame[19] = (csum&0xFF);
+    // Atmega uses Little Endian byte order. The IP checksum algorithm
+    // works for any byte order. We just need to make sure that
+    // checksum bytes are sent out in the byte order of the platform,
+    // which is LE (low byte first) for Atmega.
+    frame[18] = (csum&0xFF);
+    frame[19] = (csum>>8);
 
     // Send frame
     Serial.write(frame, 20);
@@ -174,7 +177,7 @@ void die()
  */
 void setup() 
 {
-    // Give components some time to start.
+    // Give components (IMU, Bluetooth module) some time to start.
     delay(2000);
     
     Serial.begin(BAUD_RATE, SERIAL_8N1); 

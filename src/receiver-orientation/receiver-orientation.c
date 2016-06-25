@@ -77,6 +77,9 @@ void sig_int(int signo)
  */
 uint16_t checksum(const uint8_t *data, size_t len)
 {
+     // Note that we do not need to consider byte order. From RFC 1071: 
+     // "The sum of 16-bit integers can be computed in either byte order."
+
      uint32_t sum = 0;
      uint16_t *words = (uint16_t *) data;
 
@@ -93,10 +96,6 @@ uint16_t checksum(const uint8_t *data, size_t len)
      while (sum>>16)
          sum = (sum & 0xFFFF) + (sum >> 16);
 
-     // Note that we do not need to convert the sum to network byte order 
-     // if all 16 bit fields are given in network byte order.
-     // From RFC 1071: 
-     // "The sum of 16-bit integers can be computed in either byte order."
      return ~sum;
 }
 
@@ -133,7 +132,7 @@ void setup_serial(int fd)
      tty.c_iflag &= ~(IXON | IXOFF | IXANY);
 
      tty.c_iflag |= IGNBRK;  // no break processing
-     tty.c_iflag |= IGNCR;   // ignore CR
+     tty.c_iflag &= ~IGNCR;  // don't discard CR characters
      tty.c_iflag &= ~INLCR;  // don't translate NL to CR
      tty.c_iflag &= ~ISTRIP; // don't strip off 8th bit
      tty.c_iflag &= ~ICRNL;  // don't translate CR to NL
@@ -150,6 +149,16 @@ void setup_serial(int fd)
           die(-1);
      }
 }
+
+#ifdef DEBUG
+void printframe(uint8_t *buffer, size_t s)
+{
+     for (int i = 0; i < s; i++) {
+	  printf("%d ", buffer[i]);
+     }
+     printf("\n");
+}
+#endif
 
 int main(int argc, char *argv[])
 {
@@ -222,7 +231,9 @@ int main(int argc, char *argv[])
 		    state = synced;
 		    nread = 2;
 		    nframeerr = 0;
-		    printf("synced\n"); // DEBUG
+#ifdef DEBUG
+		    printf("synced\n");
+#endif
 	       }
 	       break;
 	  case synced:
@@ -232,21 +243,32 @@ int main(int argc, char *argv[])
 	       }
 	       nread += n;
 	       if (nread == FRAMESIZE) {
+#ifdef DEBUG
+		    printframe(buffer, FRAMESIZE);
+#endif
 		    // Complete frame read.
 		    if (checksum(buffer, FRAMESIZE) != 0) {
 			 // Bad frame.
+#ifdef DEBUG
+			 printf("CORRUPT FRAME\n");
+#endif
 			 nframeerr++;
 			 if (nframeerr > MAX_FRAME_ERR) {
 			      // Too many corrupt frames. Possibly out of sync.
 			      state = unsynced1;
-			      printf("UNSYNCED\n"); // DEBUG
+#ifdef DEBUG
+			      printf("UNSYNCED\n");
+#endif
 			 }
 		    } else {
 			 // Frame OK.
 			 // TODO: handle frame
+#ifdef DEBUG
+			 printf("correct frame\n");
+#endif
 			 nframeerr = 0;
-			 nread = 0;
 		    }
+		    nread = 0;
 	       }
 	       break;
 	  }
