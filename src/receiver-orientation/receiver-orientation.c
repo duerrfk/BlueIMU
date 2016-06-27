@@ -27,12 +27,68 @@
 #include <fcntl.h>
 #include <signal.h>
 #include <stdint.h>
+#include <math.h>
 #include "kalmanfilter.h"
 
+// Size of a frame transmitted over the Bluetooth serial connection.
 #define FRAMESIZE 20
+
+// Number of tolerated corrupt frames before the data stream is
+// re-synchronized.
 #define MAX_FRAME_ERR 1
 
+// Sigma values of the Gaussian distributions of measurements.
+// The angle (phi) is only observed indirectly by measuring the 
+// objects acceleration with the accelerometer and assuming that acceleration 
+// points to the center of the earth due to gravity. Obviously, when the 
+// object accelerates, this is not valid. Therefore, we assume that
+// in general angular measurements have a quite broad distribution.
+const float sigma_phi = 10.0/360.0 * 2.0*M_PI;
+// Angular velocity is measured directly by the gyroscope and should be 
+// quite accurate.
+const float sigma_phidot = 0.1/360.0 * 2.0*M_PI;
+
+// Sigma values of the Gaussian distribution of the uncontrolled
+// angular acceleration. This noise depends on the external forces
+// that accelerate the object around its axis (e.g., motors).  
+const float sigma_angularaccel = 1.0/360.0 * 2.0*M_PI;
+
+// The sensitivity and value range of the accelerometer as defined by the
+// following table:
+//
+// AFS_SEL | Full Scale Range | LSB Sensitivity
+// --------+------------------+----------------
+// 0       | +/- 2g           | 8192 LSB/mg
+// 1       | +/- 4g           | 4096 LSB/mg
+// 2       | +/- 8g           | 2048 LSB/mg
+// 3       | +/- 16g          | 1024 LSB/mg
+const float lsb_to_mg = 8192.0f;
+
+// The sensitivity and value range of the gyroscope as defined by the
+// following table:
+//
+// FS_SEL | Full Scale Range   | LSB Sensitivity
+// -------+--------------------+----------------
+// 0      | +/- 250 degrees/s  | 131 LSB/deg/s
+// 1      | +/- 500 degrees/s  | 65.5 LSB/deg/s
+// 2      | +/- 1000 degrees/s | 32.8 LSB/deg/s
+// 3      | +/- 2000 degrees/s | 16.4 LSB/deg/s
+const float lsb_to_degs = 131.0f;
+
 enum States {synced, unsynced1, unsynced2} state;
+
+struct Sample {
+     // Acceleration in g.
+     float accelX; 
+     float accelY; 
+     float accelZ;
+     // Angular velocity in deg/s.
+     float gyroX;
+     float gyroY;
+     float gyroZ;
+     // Timestamp in milliseconds since device reboot.
+     uint32_t timestamp;
+};
 
 // Start of frame pattern
 const uint8_t start_of_frame[] = {0x5A, 0xA5};
@@ -150,6 +206,44 @@ void setup_serial(int fd)
      }
 }
 
+/**
+ * Parse a sample transported in a frame.
+ *
+ * @param frame the frame containing the sample.
+ * @param sample pointer to the allocated sample data structure.
+ */
+void parse_sample(uint8_t *frame, struct Sample *sample)
+{
+     // All values are in Big Endiand byte order.
+     int16_t lsb_accelX = (((uint16_t) frame[2])<<8) | frame[3];
+     int16_t lsb_accelY = (((uint16_t) frame[4])<<8) | frame[5];
+     int16_t lsb_accelZ = (((uint16_t) frame[6])<<8) | frame[7];
+
+     int16_t lsb_gyroX = (((uint16_t) frame[8])<<8) | frame[9];
+     int16_t lsb_gyroY = (((uint16_t) frame[10])<<8) | frame[11];
+     int16_t lsb_gyroZ = (((uint16_t) frame[12])<<8) | frame[13];
+
+     // Translate raw ADC readings to meaningful acceleration and 
+     // angular velocity values.
+     sample->accelX = lsb_to_mg/1000.0f * lsb_accelX;
+     sample->accelY = lsb_to_mg/1000.0f * lsb_accelY;
+     sample->accelZ = lsb_to_mg/1000.0f * lsb_accelZ;
+
+     sample->gyroX = lsb_to_degs * lsb_gyroX;
+     sample->gyroY = lsb_to_degs * lsb_gyroY;
+     sample->gyroZ = lsb_to_degs * lsb_gyroZ;
+
+     sample->timestamp = (((uint32_t) frame[14])<<24) |
+	  (((uint32_t) frame[15])<<16) |
+	  (((uint32_t) frame[16])<<8) |
+	  (((uint32_t) frame[17]));
+}
+
+void kalmanfilter_update(const struct Sample *sample)
+{
+     
+}
+
 #ifdef DEBUG
 void printframe(uint8_t *buffer, size_t s)
 {
@@ -189,6 +283,15 @@ int main(int argc, char *argv[])
 	  die(-1);
      }
 
+     // Initialize Kalman filters.
+     // Initial angle: 0 rad
+     // Initial angular velocity: 0 rad/s
+     struct kf kf_pitch, kf_roll;
+     kf_init(&kf_pitch, 0.0f, 0.0f, 
+	     sigma_phi, sigma_phidot, sigma_angularaccel);
+     kf_init(&kf_roll, 0.0f, 0.0f, 
+	     sigma_phi, sigma_phidot, sigma_angularaccel);
+
      // Open output file.
      if ((out = fopen(outpath_arg, "w")) == NULL) {
 	  perror("Could not open output file");
@@ -212,6 +315,7 @@ int main(int argc, char *argv[])
      uint8_t buffer[FRAMESIZE];
      size_t nread, n;
      unsigned int nframeerr;
+     struct Sample sample;
      while (1) {
 	  switch (state) {
 	  case unsynced1:
@@ -254,7 +358,7 @@ int main(int argc, char *argv[])
 #endif
 			 nframeerr++;
 			 if (nframeerr > MAX_FRAME_ERR) {
-			      // Too many corrupt frames. Possibly out of sync.
+			      // Too many corrupt frames -> resync.
 			      state = unsynced1;
 #ifdef DEBUG
 			      printf("UNSYNCED\n");
@@ -262,7 +366,8 @@ int main(int argc, char *argv[])
 			 }
 		    } else {
 			 // Frame OK.
-			 // TODO: handle frame
+			 parse_sample(buffer, &sample);
+			 kalmanfilter_update(&sample);
 #ifdef DEBUG
 			 printf("correct frame\n");
 #endif

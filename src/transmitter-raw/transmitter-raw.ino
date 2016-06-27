@@ -26,13 +26,37 @@
 // This pin supports level interrupts to listen for connection status changes.
 #define PIN_LED 2
 
-// Sampling period in microseconds
+// Sampling period in microseconds.
+// Note: Depending on the sampling interval, you should also set
+// the digital low-pass filter (see DLPF definition).
 #define SAMPLING_PERIOD 5000
 
 // The baud rate of the serial connection to the Bluetooth module. 
 // The MCU is running at 7.3728 MHz. Thus, 230400 baud = 7.3728/32 allows for 
 // perfect timing for serial communication. 
 #define BAUD_RATE 230400
+
+// The sensitivity and value range of the accelerometer as defined by the
+// following table:
+//
+// AFS_SEL | Full Scale Range | LSB Sensitivity
+// --------+------------------+----------------
+// 0       | +/- 2g           | 8192 LSB/mg
+// 1       | +/- 4g           | 4096 LSB/mg
+// 2       | +/- 8g           | 2048 LSB/mg
+// 3       | +/- 16g          | 1024 LSB/mg
+#define RANGE_ACCEL 0
+
+// The sensitivity and value range of the gyroscope as defined by the
+// following table:
+//
+// FS_SEL | Full Scale Range   | LSB Sensitivity
+// -------+--------------------+----------------
+// 0      | +/- 250 degrees/s  | 131 LSB/deg/s
+// 1      | +/- 500 degrees/s  | 65.5 LSB/deg/s
+// 2      | +/- 1000 degrees/s | 32.8 LSB/deg/s
+// 3      | +/- 2000 degrees/s | 16.4 LSB/deg/s
+#define RANGE_GYRO 0
 
 // Configuration of digital low pass filter of IMU according to the
 // following table:
@@ -53,7 +77,7 @@
 // will be cut-off.
 #define DLPF 1
 
-// Start of frame pattern
+// Start of frame pattern.
 const uint8_t start_of_frame[] = {0x5A, 0xA5};
 
 volatile enum State {disconnected, connected} state = disconnected;  
@@ -61,7 +85,8 @@ volatile enum State {disconnected, connected} state = disconnected;
 volatile bool is_sample_due = false;
 
 // The GY-521 board has a pull-down resistor connected to AD0,
-// so the address is 0x68 (default). Change to 0x69 if a pull-up is used instead.
+// so the I2C address is 0x68 (default). Change to 0x69 if a pull-up 
+// resistor is used instead.
 //MPU6050 imu(0x69);
 MPU6050 imu;
 
@@ -142,10 +167,10 @@ void send_frame(int16_t accelX, int16_t accelY, int16_t accelZ,
     
     // Add checksum
     uint16_t csum = checksum(frame, 18);
-    // Atmega uses Little Endian byte order. The IP checksum algorithm
-    // works for any byte order. We just need to make sure that
-    // checksum bytes are sent out in the byte order of the platform,
-    // which is LE (low byte first) for Atmega.
+    // The IP checksum algorithm works for any byte order. 
+    // However, we need to sent out the 16 bit checksum in the 
+    // byte order of the platform. Atmega uses Little Endian
+    // byte order, so we need to send the low byte first.
     frame[18] = (csum&0xFF);
     frame[19] = (csum>>8);
 
@@ -156,8 +181,9 @@ void send_frame(int16_t accelX, int16_t accelY, int16_t accelZ,
 /**
  * Called in case of fatal error preventing continuation.
  * 
- * Function will never return and signal fatal error over
- * Bluetooth by sending empty frames in an endless sequence.
+ * This function will never return and signal a fatal error over
+ * Bluetooth by sending empty frames (start of frame sequence only) 
+ * in an endlessly.
  */
 void die()
 {
@@ -177,17 +203,17 @@ void die()
  */
 void setup() 
 {
-    // Give components (IMU, Bluetooth module) some time to start.
+    // Give components (IMU module, Bluetooth module) some time to start.
     delay(2000);
     
     Serial.begin(BAUD_RATE, SERIAL_8N1); 
 
-    // Initialize sampling timer. Time is only activated
+    // Initialize sampling timer. The timer is only active
     // when a connection is made via Bluetooth. So we only
-    // initialize the interval here.
+    // initialize the timer interval here and start the timer later.
     Timer1.initialize(SAMPLING_PERIOD);
 
-    // With this pin, we check the connection status.
+    // With this pin, the Bluetooth module signals the connection status.
     pinMode(PIN_LED, INPUT);
 
     // Initialize IMU
@@ -195,12 +221,11 @@ void setup()
     // Init I2C
     Wire.begin();
     
-    // Initialize device. 
-    // Default are the most sensitive settings:
-    // - acceleration: +/- 2g
-    // - gyro: +/- 250 degrees/sec
+    // Initialize IMU device.
     imu.initialize();
-     
+    imu.setFullScaleGyroRange(RANGE_GYRO);
+    imu.setFullScaleAccelRange(RANGE_ACCEL);
+    
     // Set digital low-pass filter (DLPF)
     //          |   ACCELEROMETER    |           GYROSCOPE
     // DLPF_CFG | Bandwidth | Delay  | Bandwidth | Delay  | Sample Rate
@@ -257,7 +282,7 @@ void sampling_timer_isr()
 
 /**
  * Take a sample (accelerometer & gyro) and send
- * data to Bluetooth module.
+ * data to Bluetooth module for transmission.
  */
 void take_sample_and_send()
 {
@@ -274,11 +299,12 @@ void loop()
     unsigned int high_count;
     switch (state) {
     case disconnected :
-        // Wait for connection. 
+        // Wait for Bluetooth connection. 
         // While disconnected, the LED blinks with a period of 750 ms. 
         // While connected, the LED is constantly on.
         // To detect a connection, we sample the LED with a frequency of 10 Hz.
-        // If the LED remains high during an interval of 1 s, we assume that the device is connected. 
+        // If the LED pin remains high during an interval of 1 s, we assume 
+        // that the Bluetooth module is connected. 
         high_count = 0;
         while (high_count < 10) {
             if (digitalRead(PIN_LED) == LOW)
@@ -291,11 +317,11 @@ void loop()
         // Start timer for sampling.
         // It's important to first attach the timer interrupt and then the level
         // interrupt, otherwise the timer interrupt might no get detached when the
-        // level interrupt fires.
+        // level interrupt fires early.
         Timer1.attachInterrupt(sampling_timer_isr);
         // If the LED pin goes low, the device is disconnected. 
         // To detect the disconnection, we use an interrupt 
-        // since the LED is connected to a digital pin supporting interrupts. 
+        // (the LED is connected to a digital pin supporting interrupts). 
         attachInterrupt(digitalPinToInterrupt(PIN_LED), led_isr, LOW);
         break;
     case connected:
