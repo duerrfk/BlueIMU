@@ -41,10 +41,10 @@
 //
 // AFS_SEL | Full Scale Range | LSB Sensitivity
 // --------+------------------+----------------
-// 0       | +/- 2g           | 8192 LSB/mg
-// 1       | +/- 4g           | 4096 LSB/mg
-// 2       | +/- 8g           | 2048 LSB/mg
-// 3       | +/- 16g          | 1024 LSB/mg
+// 0       | +/- 2g           | 16384 LSB/g
+// 1       | +/- 4g           | 8192 LSB/g
+// 2       | +/- 8g           | 4096 LSB/g
+// 3       | +/- 16g          | 2048 LSB/g
 #define RANGE_ACCEL 0
 
 // The sensitivity and value range of the gyroscope as defined by the

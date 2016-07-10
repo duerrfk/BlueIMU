@@ -20,14 +20,15 @@
 #define KALMANFILTER_H
 
 /*
-  A Kalman filter modelling the orientation (phi) and angular velocity (phidot)
-  of an IMU.
+  A Kalman filter modelling the angle (phi), angular velocity (phidot), 
+  and gyro bias (bias) of an IMU. The filter only considers one axis of
+  the IMU.
 
   State vector: 
 
         [ phi  ] 
-    x = 
-        [phidot] 
+    x = [phidot]
+        [ bias ] 
 
   State equation:
 
@@ -35,27 +36,34 @@
 
     with:
 
-           [1 t_delta]
-    F(k) = 
-           [0   1    ]
-
-               [t_delta**2/2]
-    omega(k) = 
-               [  t_delta   ]
+           [1 t_delta -t_delta]
+    F(k) = [0    1        0   ]
+           [0    0        1   ]
 
   This implementation assumes no control input model (B). Instead, a normally
-  distributed random angular acceleration (a) is introduced modelling the effect
-  of external forces like motors as part of the random process noise (omega).
+  distributed random angular acceleration (phidotdot) is introduced modelling 
+  the effect of external forces like motors as part of the random process 
+  noise (omega):
+
+               [t_delta**2/2]
+    omega(k) = [  t_delta   ] * phidotdot
+               [     0      ]
 
   Covariance matrix Q of normally distributed random process noise 
   omega ~ N(0,Q):
+                                      
+    Q = G*Gtrans*sigma_phidotdot**2 
 
-                                   [t_delta**4/4  t_delta**3/2]
-    Q = G*Gtransposed*sigma_a**2 =                              * sigma_a**2
-                                   [t_delta**3/2   tdelta_**2 ]
+        [t_delta**4/4  t_delta**3/2  0]
+      = [t_delta**3/2   t_delta**2   0] * sigma_phidotdot**2
+        [      0             0       0]
 
-  Covariance matrix R of normally distributed random measuring noise
-  v ~ N(0,R):
+  Moreover, we assume that we can measure the angle from the IMU
+  acceleration (phi_m) and the angular velocity (phidot_m) from the gyroscope. 
+  However, we cannot measure the gyro bias. Measurements are modelled as 
+  independent normally distributed random variables to account for
+  measurement noise. The covariance matrix R of normally distributed random 
+  measuring noise v ~ N(0,R) is defined as:
 
       [sigma_phi_m**2         0         ]
   R = 
@@ -70,18 +78,19 @@ struct kf {
      // State vector x.
      // x[0]: angle (phi) [rad]
      // x[1]: angular velocity (phidot) [rad/s]
-     float x[2];
+     // x[2]: gyro bias [rad/s]
+     float x[3];
      // Covariance matrix of random state error.
-     float P[2][2];
+     float P[3][3];
      // Covariance matrix of random measurement noise.
      float R[2][2];
      // Variance of normally distributed random angular acceleration 
      // as part of process noise.
-     float sigma_a_square;
+     float sigma_phidotdot_square;
 };
 
 /**
- * Initialization a new Kalman filter instance.
+ * Initialization of a new Kalman filter instance.
  *
  * Time is initialized to zero.
  *
@@ -91,16 +100,17 @@ struct kf {
  * @param filter pointer to filter instance to be initialized.
  * @param phi initial angle.
  * @param phidot initial angular velocity.
+ * @param phidotdot initial gyro bias.
  * @param sigma_phi_m standard deviation of measurement noise for 
  * measurements of the angle.
  * @param sigma_phidot_m standard deviation of measurement noise for 
  * measurements of the angular velocity.
- * @param sigma_a standard deviation of random angular acceleration due 
+ * @param sigma_phidotdot standard deviation of random angular acceleration due 
  * to uncontrolled external forces.
  */
-void kf_init(struct kf *filter, float phi, float phidot, 
+void kf_init(struct kf *filter, float phi, float phidot, float phidotdot, 
 	     float sigma_phi_m, float sigma_phidot_m, 
-	     float sigma_a);
+	     float sigma_phidotdot);
 
 /**
  * State prediction.
@@ -110,11 +120,11 @@ void kf_init(struct kf *filter, float phi, float phidot,
  *
  * @param filter pointer to the filter instance.
  * @param t_delta elapsed time since filter update.
- * @param x_pred predicted state (angle and angular velocity).
+ * @param x_pred predicted state (angle, angular velocity, gyro bias).
  * @param P_pred predicted error covariance matrix.
  */
-void kf_predict(const struct kf *filter, float t_delta, float x_pred[2], 
-		float P_pred[2][2]);
+void kf_predict(const struct kf *filter, float t_delta, float x_pred[3], 
+		float P_pred[3][3]);
 
 /**
  * State update.

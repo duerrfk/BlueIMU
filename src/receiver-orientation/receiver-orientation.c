@@ -37,32 +37,34 @@
 // re-synchronized.
 #define MAX_FRAME_ERR 1
 
-// Sigma values of the Gaussian distributions of measurements.
+// Standard deviations of the Gaussian distributions of measurements.
 // The angle (phi) is only observed indirectly by measuring the 
-// objects acceleration with the accelerometer and assuming that acceleration 
-// points to the center of the earth due to gravity. Obviously, when the 
-// object accelerates, this is not valid. Therefore, we assume that
-// in general angular measurements have a quite broad distribution.
-const float sigma_phi = 10.0/360.0 * 2.0*M_PI;
+// objects acceleration by the accelerometer and assuming that acceleration 
+// points to the center of the earth due to gravity. Obviously, the
+// acceleration vector might not point towards the center of the earth
+// if the object is accelerated by other forces than gravity.
+// Therefore, we assume that in general angular measurements have a quite 
+// broad distribution.
+const float sigma_phi = 5.0/360.0 * 2.0*M_PI;
 // Angular velocity is measured directly by the gyroscope and should be 
 // quite accurate.
-const float sigma_phidot = 0.1/360.0 * 2.0*M_PI;
+const float sigma_phidot = 0.5/360.0 * 2.0*M_PI;
 
-// Sigma values of the Gaussian distribution of the uncontrolled
-// angular acceleration. This noise depends on the external forces
-// that accelerate the object around its axis (e.g., motors).  
-const float sigma_angularaccel = 1.0/360.0 * 2.0*M_PI;
+// Standard deviation of the Gaussian distribution modelling the uncontrolled
+// angular acceleration. This noise depends on the external forces (e.g.,
+// due to motors, wind, etc.) that accelerate the object around its axes.  
+const float sigma_angularaccel = 5.0/360.0 * 2.0*M_PI;
 
 // The sensitivity and value range of the accelerometer as defined by the
 // following table:
 //
 // AFS_SEL | Full Scale Range | LSB Sensitivity
 // --------+------------------+----------------
-// 0       | +/- 2g           | 8192 LSB/mg
-// 1       | +/- 4g           | 4096 LSB/mg
-// 2       | +/- 8g           | 2048 LSB/mg
-// 3       | +/- 16g          | 1024 LSB/mg
-const float lsb_to_mg = 8192.0f;
+// 0       | +/- 2g           | 16384 LSB/g
+// 1       | +/- 4g           | 8192 LSB/g
+// 2       | +/- 8g           | 4096 LSB/g
+// 3       | +/- 16g          | 2048 LSB/g
+const float lsb_per_g = 16384.0f;
 
 // The sensitivity and value range of the gyroscope as defined by the
 // following table:
@@ -73,20 +75,20 @@ const float lsb_to_mg = 8192.0f;
 // 1      | +/- 500 degrees/s  | 65.5 LSB/deg/s
 // 2      | +/- 1000 degrees/s | 32.8 LSB/deg/s
 // 3      | +/- 2000 degrees/s | 16.4 LSB/deg/s
-const float lsb_to_degs = 131.0f;
+const float lsb_per_degs = 131.0f;
 
 enum States {synced, unsynced1, unsynced2} state;
 
 struct Sample {
-     // Acceleration in g.
-     float accelX; 
-     float accelY; 
-     float accelZ;
-     // Angular velocity in deg/s.
-     float gyroX;
-     float gyroY;
-     float gyroZ;
-     // Timestamp in milliseconds since device reboot.
+     // Acceleration [m/s**2].
+     float accel_x; 
+     float accel_y; 
+     float accel_z;
+     // Angular velocity [rad/s].
+     float gyro_x;
+     float gyro_y;
+     float gyro_z;
+     // Timestamp in milliseconds since IMU was booted.
      uint32_t timestamp;
 };
 
@@ -95,6 +97,9 @@ const uint8_t start_of_frame[] = {0x5A, 0xA5};
 
 int serial = -1;
 FILE *out = NULL;
+
+bool is_first_update = true;
+uint32_t t_last_update;
 
 /**
  * Gracefully exit the application.
@@ -214,24 +219,24 @@ void setup_serial(int fd)
  */
 void parse_sample(uint8_t *frame, struct Sample *sample)
 {
-     // All values are in Big Endiand byte order.
-     int16_t lsb_accelX = (((uint16_t) frame[2])<<8) | frame[3];
-     int16_t lsb_accelY = (((uint16_t) frame[4])<<8) | frame[5];
-     int16_t lsb_accelZ = (((uint16_t) frame[6])<<8) | frame[7];
+     // All values are in Big Endian byte order.
+     int16_t lsb_accel_x = (((int16_t) frame[2])<<8) | frame[3];
+     int16_t lsb_accel_y = (((int16_t) frame[4])<<8) | frame[5];
+     int16_t lsb_accel_z = (((int16_t) frame[6])<<8) | frame[7];
 
-     int16_t lsb_gyroX = (((uint16_t) frame[8])<<8) | frame[9];
-     int16_t lsb_gyroY = (((uint16_t) frame[10])<<8) | frame[11];
-     int16_t lsb_gyroZ = (((uint16_t) frame[12])<<8) | frame[13];
+     int16_t lsb_gyro_x = (((int16_t) frame[8])<<8) | frame[9];
+     int16_t lsb_gyro_y = (((int16_t) frame[10])<<8) | frame[11];
+     int16_t lsb_gyro_z = (((int16_t) frame[12])<<8) | frame[13];
 
      // Translate raw ADC readings to meaningful acceleration and 
-     // angular velocity values.
-     sample->accelX = lsb_to_mg/1000.0f * lsb_accelX;
-     sample->accelY = lsb_to_mg/1000.0f * lsb_accelY;
-     sample->accelZ = lsb_to_mg/1000.0f * lsb_accelZ;
+     // angular velocity values in m/s**2 and rad/s, respectively.
+     sample->accel_x = lsb_accel_x/lsb_per_g*9.81f;
+     sample->accel_y = lsb_accel_y/lsb_per_g*9.81f;
+     sample->accel_z = lsb_accel_z/lsb_per_g*9.81f;
 
-     sample->gyroX = lsb_to_degs * lsb_gyroX;
-     sample->gyroY = lsb_to_degs * lsb_gyroY;
-     sample->gyroZ = lsb_to_degs * lsb_gyroZ;
+     sample->gyro_x = lsb_gyro_x/lsb_per_degs/360.0f*2.0f*M_PI;
+     sample->gyro_y = lsb_gyro_y/lsb_per_degs/360.0f*2.0f*M_PI;
+     sample->gyro_z = lsb_gyro_z/lsb_per_degs/360.0f*2.0f*M_PI;
 
      sample->timestamp = (((uint32_t) frame[14])<<24) |
 	  (((uint32_t) frame[15])<<16) |
@@ -239,12 +244,64 @@ void parse_sample(uint8_t *frame, struct Sample *sample)
 	  (((uint32_t) frame[17]));
 }
 
-void kalmanfilter_update(const struct Sample *sample)
+/**
+ * Update a Kalman filter given a measurement.
+ *
+ * @param filter pointer to Kalman filter to be updated. 
+ * @param phi measured angle [rad].
+ * @param phidot measured angular velocity [rad/s].
+ * @param t_last_update time of last update [ms].
+ * @param t_sample time of sample [ms].
+ */
+void kalmanfilter_update(struct kf *filter, float phi, float phidot,
+			 uint32_t t_last_update, uint32_t t_sample)
 {
-     
+     float t_delta;
+     if (t_last_update <= t_sample) {
+	  t_delta = (float) (t_sample-t_last_update)/1000.0f;
+     } else {
+	  // wrap around
+	  t_delta = (float) ((0xffffffffUL-t_last_update)+t_sample)/1000.0f;
+     }
+
+     kf_update(filter, phi, phidot, t_delta);
+}
+
+/**
+ * Calculate roll angle (rotation around x axis) from measured acceleration. 
+ * We assume that acceleration is just gravity and, therefore, the acceleration 
+ * vector points towards the center of the earth. 
+ *
+ * @param accel_y acceleration along Y axis of the IMU.
+ * @param accel_z acceleration along Z axis of the IMU.
+ * @return roll angle [rad]
+ */
+float roll_from_accel(float accel_y, float accel_z)
+{
+     return atan2f(accel_y, accel_z);
+}
+
+/**
+ * Calculate pitch angle (rotation around y axis) from measured acceleration. 
+ * We assume that acceleration is just gravity and, therefore, the acceleration 
+ * vector points towards the center of the earth. 
+ *
+ * @param accel_x acceleration along X axis of the IMU.
+ * @param accel_z acceleration along Z axis of the IMU.
+ * @return pitch angle [rad]
+ */
+float pitch_from_accel(float accel_x, float accel_z)
+{
+     return -atan2f(accel_x, accel_z);
 }
 
 #ifdef DEBUG
+/**
+ * Print frame contents as string of bytes on stdout.
+ * 
+ * @param buffer buffer with frame content.
+ * @param s size of buffer.
+ */
 void printframe(uint8_t *buffer, size_t s)
 {
      for (int i = 0; i < s; i++) {
@@ -283,14 +340,8 @@ int main(int argc, char *argv[])
 	  die(-1);
      }
 
-     // Initialize Kalman filters.
-     // Initial angle: 0 rad
-     // Initial angular velocity: 0 rad/s
+     // Kalman filters are later initialized after first sample.
      struct kf kf_pitch, kf_roll;
-     kf_init(&kf_pitch, 0.0f, 0.0f, 
-	     sigma_phi, sigma_phidot, sigma_angularaccel);
-     kf_init(&kf_roll, 0.0f, 0.0f, 
-	     sigma_phi, sigma_phidot, sigma_angularaccel);
 
      // Open output file.
      if ((out = fopen(outpath_arg, "w")) == NULL) {
@@ -367,10 +418,56 @@ int main(int argc, char *argv[])
 		    } else {
 			 // Frame OK.
 			 parse_sample(buffer, &sample);
-			 kalmanfilter_update(&sample);
 #ifdef DEBUG
 			 printf("correct frame\n");
+			 printf("accel_x = %f g\taccel_y = %f g\t"
+				"accel_z = %f g\tgyro_x= %f rad/s\t"
+				"gyro_y = %f rad/s\tgyro_z = %frad/s\t"
+				"t = %u\n", sample.accel_x,
+				sample.accel_y, sample.accel_z,
+				sample.gyro_x, sample.gyro_y, sample.gyro_z,
+				sample.timestamp);
 #endif
+
+			 float roll = roll_from_accel(sample.accel_y,
+			      sample.accel_z);
+			 float pitch = pitch_from_accel(sample.accel_x,
+			      sample.accel_z);
+			 if (is_first_update) {
+			      kf_init(&kf_pitch, pitch, sample.gyro_y, 
+				      sigma_phi, sigma_phidot, 0.0f, 
+				      sigma_angularaccel);
+			      kf_init(&kf_roll, roll, sample.gyro_x, 
+				      sigma_phi, sigma_phidot, 0.0f, 
+				      sigma_angularaccel);
+			      is_first_update = false;
+			 } else {
+			     kalmanfilter_update(&kf_pitch, pitch, 
+			         sample.gyro_y, t_last_update, 
+			         sample.timestamp);
+			     kalmanfilter_update(&kf_roll, roll, 
+			         sample.gyro_x, t_last_update, 
+			         sample.timestamp);
+			 }
+#ifdef DEBUG
+			 float roll_deg = roll/(2.0f*M_PI)*360.0f;
+			 float pitch_deg = pitch/(2.0f*M_PI)*360.0f;
+			 printf("Measure: roll = %f deg\n",
+				roll_deg);
+			 printf("Measure: pitch = %f deg\n",
+				pitch_deg);
+			 roll_deg = kf_roll.x[0]/(2.0f*M_PI)*360.0f;
+			 pitch_deg = kf_pitch.x[0]/(2.0f*M_PI)*360.0f;
+			 printf("Kalman: roll = %f deg "
+				"v = %f [rad/s] "
+				"bias = %f [rad/s]\n",
+				roll_deg, kf_roll.x[1], kf_roll.x[2]);
+			 printf("Kalman: pitch = %f deg "
+				"v = %f [rad/s] "
+				"bias = %f [rad/s]\n",
+				roll_deg, kf_pitch.x[1], kf_pitch.x[2]);
+#endif
+			 t_last_update = sample.timestamp;
 			 nframeerr = 0;
 		    }
 		    nread = 0;

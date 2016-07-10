@@ -1,7 +1,7 @@
 CC=gcc
 
 CFLAGS=-c -Wall -std=gnu99 -D_XOPEN_SOURCE=500 -D_GNU_SOURCE -DDEBUG
-LDFLAGS=
+LDFLAGS=-lm
 
 receiver-orientation: kalmanfilter.o receiver-orientation.o
 	$(CC) kalmanfilter.o receiver-orientation.o $(LDFLAGS) -o $@
