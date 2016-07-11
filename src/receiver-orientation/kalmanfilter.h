@@ -100,7 +100,7 @@ struct kf {
  * @param filter pointer to filter instance to be initialized.
  * @param phi initial angle.
  * @param phidot initial angular velocity.
- * @param phidotdot initial gyro bias.
+ * @param bias_phidot initial gyro bias.
  * @param sigma_phi_m standard deviation of measurement noise for 
  * measurements of the angle.
  * @param sigma_phidot_m standard deviation of measurement noise for 
@@ -108,7 +108,7 @@ struct kf {
  * @param sigma_phidotdot standard deviation of random angular acceleration due 
  * to uncontrolled external forces.
  */
-void kf_init(struct kf *filter, float phi, float phidot, float phidotdot, 
+void kf_init(struct kf *filter, float phi, float phidot, float bias_phidot, 
 	     float sigma_phi_m, float sigma_phidot_m, 
 	     float sigma_phidotdot);
 

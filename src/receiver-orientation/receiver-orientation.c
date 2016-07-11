@@ -45,15 +45,15 @@
 // if the object is accelerated by other forces than gravity.
 // Therefore, we assume that in general angular measurements have a quite 
 // broad distribution.
-const float sigma_phi = 5.0/360.0 * 2.0*M_PI;
+const float sigma_phi = .1/360.0 * 2.0*M_PI;
 // Angular velocity is measured directly by the gyroscope and should be 
 // quite accurate.
-const float sigma_phidot = 0.5/360.0 * 2.0*M_PI;
+const float sigma_phidot = 0.1/360.0 * 2.0*M_PI;
 
 // Standard deviation of the Gaussian distribution modelling the uncontrolled
 // angular acceleration. This noise depends on the external forces (e.g.,
 // due to motors, wind, etc.) that accelerate the object around its axes.  
-const float sigma_angularaccel = 5.0/360.0 * 2.0*M_PI;
+const float sigma_angularaccel = 1.0f/360.0 * 2.0*M_PI;
 
 // The sensitivity and value range of the accelerometer as defined by the
 // following table:
@@ -422,7 +422,7 @@ int main(int argc, char *argv[])
 			 printf("correct frame\n");
 			 printf("accel_x = %f g\taccel_y = %f g\t"
 				"accel_z = %f g\tgyro_x= %f rad/s\t"
-				"gyro_y = %f rad/s\tgyro_z = %frad/s\t"
+				"gyro_y = %f rad/s\tgyro_z = %f rad/s\t"
 				"t = %u\n", sample.accel_x,
 				sample.accel_y, sample.accel_z,
 				sample.gyro_x, sample.gyro_y, sample.gyro_z,

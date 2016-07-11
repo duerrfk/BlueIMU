@@ -17,14 +17,15 @@
  */
 
 #include "kalmanfilter.h"
+#include <stdio.h>
 
-void kf_init(struct kf *filter, float phi, float phidot, float phidotdot,
+void kf_init(struct kf *filter, float phi, float phidot, float bias_phidot,
 	     float sigma_phi_measurement, float sigma_phidot_measurement, 
 	     float sigma_phidotdot)
 {
      filter->x[0] = phi;
      filter->x[1] = phidot;
-     filter->x[2] = phidotdot;
+     filter->x[2] = bias_phidot;
 
      // Assume perfectly accurate initial angle, angular velocity, and bias.
      filter->P[0][0] = 0.0f;
@@ -72,9 +73,12 @@ void kf_update(struct kf *filter, float phi_m, float phidot_m, float t_delta)
      S[1][1] = P_pred[1][1] + filter->R[1][1];
 
      // To calculate the Kalman gain below, we need the inverse of matrix S
-     // (Sinv = S**-1). We use the following formula to calculate the
-     // inverse of S: inv(S) = 1/det(S) * adj(S)
+     // (inv(S) = Sinv). We use the following formula to calculate the inverse:
+     //
+     //   inv(S) = 1/det(S) * adj(S)
+     //    
      // For a 2x2 matrix S, the adjugate matrix adj(S) can be calculated as:
+     //
      //          [S11  -S01]
      // adj(S) = 
      //          [-S10  S00]
@@ -170,9 +174,9 @@ void kf_predict(const struct kf *filter, float t_delta, float x_pred[3],
      //  Q(k) = [t_delta**3/2   t_delta**2   0] * sigma_phidotdot**2
      //         [      0             0       0]
      float t_delta_square = t_delta*t_delta; 
-     Q[0][0] = t_delta_square*t_delta_square/4.0f*
-	  filter->sigma_phidotdot_square;
-     Q[0][1] = t_delta_square*t_delta/2.0f*filter->sigma_phidotdot_square;
+     Q[0][0] = t_delta_square*t_delta_square*
+	  filter->sigma_phidotdot_square/4.0f;
+     Q[0][1] = t_delta_square*t_delta*filter->sigma_phidotdot_square/2.0f;
      Q[0][2] = 0.0f;
      Q[1][0] = Q[0][1];
      Q[1][1] = t_delta_square*filter->sigma_phidotdot_square;
