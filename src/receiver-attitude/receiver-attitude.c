@@ -39,21 +39,26 @@
 
 // Standard deviations of the Gaussian distributions of measurements.
 // The angle (phi) is only observed indirectly by measuring the 
-// objects acceleration by the accelerometer and assuming that acceleration 
-// points to the center of the earth due to gravity. Obviously, the
-// acceleration vector might not point towards the center of the earth
-// if the object is accelerated by other forces than gravity.
+// objects acceleration, assuming that acceleration is just due to gravity 
+// and thus pointing towards the center of earth. Obviously, this assumption 
+// does not hold if the object is accelerated by other forces than gravity. 
 // Therefore, we assume that in general angular measurements have a quite 
-// broad distribution.
-const float sigma_phi = .1/360.0 * 2.0*M_PI;
-// Angular velocity is measured directly by the gyroscope and should be 
-// quite accurate.
-const float sigma_phidot = 0.1/360.0 * 2.0*M_PI;
+// broad distribution. 0.003 is the standard deviation of an object at
+// rest calculated from sample measurements.
+const float sigma_phi = 0.003f*10.0f;
+// Angular velocity is measured directly by the gyroscope. The following
+// standard deviation was calculated from sample measurements.
+const float sigma_phidot = 0.0015f;
 
-// Standard deviation of the Gaussian distribution modelling the uncontrolled
+// Standard deviation of the Gaussian distribution modelling uncontrolled
 // angular acceleration. This noise depends on the external forces (e.g.,
-// due to motors, wind, etc.) that accelerate the object around its axes.  
+// due to motors) that accelerate the object around its axes.  
 const float sigma_angularaccel = 1.0f/360.0 * 2.0*M_PI;
+
+// Standard deviation of the Gaussian distribution modelling uncontrolled
+// change if gyro bias. We can reasonably assume that the gyro bias
+// only fluctuates very little.
+const float sigma_bias = 0.0001f;
 
 // The sensitivity and value range of the accelerometer as defined by the
 // following table:
@@ -295,7 +300,6 @@ float pitch_from_accel(float accel_x, float accel_z)
      return -atan2f(accel_x, accel_z);
 }
 
-#ifdef DEBUG
 /**
  * Print frame contents as string of bytes on stdout.
  * 
@@ -309,7 +313,23 @@ void printframe(uint8_t *buffer, size_t s)
      }
      printf("\n");
 }
-#endif
+
+void flog(FILE *f, uint32_t timestamp, 
+	  float accel_x, float accel_y, float accel_z,
+	  float gyro_x, float gyro_y, float gyro_z,
+	  float roll_measure, float pitch_measure, 
+	  float kf_roll_phi, float kf_pitch_phi,
+	  float kf_roll_phidot, float kf_pitch_phidot, 
+	  float kf_roll_bias, float kf_pitch_bias) 
+{
+     fprintf(f, "%d,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f\n",
+	     timestamp, accel_x, accel_y, accel_z,
+	     gyro_x, gyro_y, gyro_z,
+	     roll_measure, pitch_measure,
+	     kf_roll_phi, kf_pitch_phi, 
+	     kf_roll_phidot, kf_pitch_phidot, 
+	     kf_roll_bias, kf_pitch_bias);
+}
 
 int main(int argc, char *argv[])
 {
@@ -418,28 +438,17 @@ int main(int argc, char *argv[])
 		    } else {
 			 // Frame OK.
 			 parse_sample(buffer, &sample);
-#ifdef DEBUG
-			 printf("correct frame\n");
-			 printf("accel_x = %f g\taccel_y = %f g\t"
-				"accel_z = %f g\tgyro_x= %f rad/s\t"
-				"gyro_y = %f rad/s\tgyro_z = %f rad/s\t"
-				"t = %u\n", sample.accel_x,
-				sample.accel_y, sample.accel_z,
-				sample.gyro_x, sample.gyro_y, sample.gyro_z,
-				sample.timestamp);
-#endif
-
 			 float roll = roll_from_accel(sample.accel_y,
 			      sample.accel_z);
 			 float pitch = pitch_from_accel(sample.accel_x,
 			      sample.accel_z);
 			 if (is_first_update) {
-			      kf_init(&kf_pitch, pitch, sample.gyro_y, 
-				      sigma_phi, sigma_phidot, 0.0f, 
-				      sigma_angularaccel);
-			      kf_init(&kf_roll, roll, sample.gyro_x, 
-				      sigma_phi, sigma_phidot, 0.0f, 
-				      sigma_angularaccel);
+			      kf_init(&kf_pitch, pitch, sample.gyro_y, 0.0f,
+				      sigma_phi, sigma_phidot, 
+				      sigma_angularaccel, sigma_bias);
+			      kf_init(&kf_roll, roll, sample.gyro_x, 0.0f, 
+				      sigma_phi, sigma_phidot, 
+				      sigma_angularaccel, sigma_bias);
 			      is_first_update = false;
 			 } else {
 			     kalmanfilter_update(&kf_pitch, pitch, 
@@ -449,26 +458,20 @@ int main(int argc, char *argv[])
 			         sample.gyro_x, t_last_update, 
 			         sample.timestamp);
 			 }
-#ifdef DEBUG
-			 float roll_deg = roll/(2.0f*M_PI)*360.0f;
-			 float pitch_deg = pitch/(2.0f*M_PI)*360.0f;
-			 printf("Measure: roll = %f deg\n",
-				roll_deg);
-			 printf("Measure: pitch = %f deg\n",
-				pitch_deg);
-			 roll_deg = kf_roll.x[0]/(2.0f*M_PI)*360.0f;
-			 pitch_deg = kf_pitch.x[0]/(2.0f*M_PI)*360.0f;
-			 printf("Kalman: roll = %f deg "
-				"v = %f [rad/s] "
-				"bias = %f [rad/s]\n",
-				roll_deg, kf_roll.x[1], kf_roll.x[2]);
-			 printf("Kalman: pitch = %f deg "
-				"v = %f [rad/s] "
-				"bias = %f [rad/s]\n",
-				roll_deg, kf_pitch.x[1], kf_pitch.x[2]);
-#endif
 			 t_last_update = sample.timestamp;
 			 nframeerr = 0;
+			 flog(out, sample.timestamp, 
+			      sample.accel_x, sample.accel_y, sample.accel_z,
+			      sample.gyro_x, sample.gyro_y, sample.gyro_z,
+			      roll, pitch, 
+			      kf_roll.x[0], kf_pitch.x[0],
+			      kf_roll.x[1], kf_pitch.x[1], 
+			      kf_roll.x[2], kf_pitch.x[2]);
+#ifdef DEBUG
+			 float rollkf = kf_roll.x[0]/(2.0f*M_PI)*360.0f; 
+			 float pitchkf = kf_pitch.x[0]/(2.0f*M_PI)*360.0f;
+			 printf("pitch = %f\troll = %f\n", pitchkf, rollkf);
+#endif
 		    }
 		    nread = 0;
 	       }

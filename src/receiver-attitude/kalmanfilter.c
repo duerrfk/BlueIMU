@@ -21,7 +21,7 @@
 
 void kf_init(struct kf *filter, float phi, float phidot, float bias_phidot,
 	     float sigma_phi_measurement, float sigma_phidot_measurement, 
-	     float sigma_phidotdot)
+	     float sigma_phidotdot, float sigma_bias)
 {
      filter->x[0] = phi;
      filter->x[1] = phidot;
@@ -44,6 +44,8 @@ void kf_init(struct kf *filter, float phi, float phidot, float bias_phidot,
      filter->R[1][1] = sigma_phidot_measurement*sigma_phidot_measurement;
 
      filter->sigma_phidotdot_square = sigma_phidotdot*sigma_phidotdot;
+
+     filter->sigma_bias_square = sigma_bias*sigma_bias;
 }
 
 void kf_update(struct kf *filter, float phi_m, float phidot_m, float t_delta)
@@ -171,8 +173,12 @@ void kf_predict(const struct kf *filter, float t_delta, float x_pred[3],
      FT[2][2] = F[2][2];
 
      //         [t_delta**4/4  t_delta**3/2  0]
-     //  Q(k) = [t_delta**3/2   t_delta**2   0] * sigma_phidotdot**2
+     //  Q(k) = [t_delta**3/2   t_delta**2   0] * sigma_phidotdot**2 +
      //         [      0             0       0]
+     //
+     //         [ 0 0 0 ]
+     //         [ 0 0 0 ] * sigma_bias**2
+     //         [ 0 0 1 ]
      float t_delta_square = t_delta*t_delta; 
      Q[0][0] = t_delta_square*t_delta_square*
 	  filter->sigma_phidotdot_square/4.0f;
@@ -183,7 +189,7 @@ void kf_predict(const struct kf *filter, float t_delta, float x_pred[3],
      Q[1][2] = 0.0f;
      Q[2][0] = 0.0f;
      Q[2][1] = 0.0f;
-     Q[2][2] = 0.0f;
+     Q[2][2] = filter->sigma_bias_square;
 
      // Since we do not know the control model (B), the new state x(k)
      // is simply predicted by: x(k) = F(k)*x(k-1)     

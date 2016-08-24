@@ -55,8 +55,12 @@
     Q = G*Gtrans*sigma_phidotdot**2 
 
         [t_delta**4/4  t_delta**3/2  0]
-      = [t_delta**3/2   t_delta**2   0] * sigma_phidotdot**2
+      = [t_delta**3/2   t_delta**2   0] * sigma_phidotdot**2 +
         [      0             0       0]
+
+        [ 0 0 0 ]
+        [ 0 0 0 ] * sigma_bias**2
+        [ 0 0 1 ]
 
   Moreover, we assume that we can measure the angle from the IMU
   acceleration (phi_m) and the angular velocity (phidot_m) from the gyroscope. 
@@ -87,6 +91,8 @@ struct kf {
      // Variance of normally distributed random angular acceleration 
      // as part of process noise.
      float sigma_phidotdot_square;
+     // Variance of normally distributed random gyro bias.
+     float sigma_bias_square;
 };
 
 /**
@@ -107,10 +113,11 @@ struct kf {
  * measurements of the angular velocity.
  * @param sigma_phidotdot standard deviation of random angular acceleration due 
  * to uncontrolled external forces.
+ * @param sigma_bias standard deviation of random gyro bias.
  */
 void kf_init(struct kf *filter, float phi, float phidot, float bias_phidot, 
 	     float sigma_phi_m, float sigma_phidot_m, 
-	     float sigma_phidotdot);
+	     float sigma_phidotdot, float sigma_bias);
 
 /**
  * State prediction.
