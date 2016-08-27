@@ -24,7 +24,8 @@
   and gyro bias (bias) of an IMU. The filter only considers one axis of
   the IMU.
 
-  State vector: 
+  State vector (phi is the angle; phidot is the angular velocity;
+  bias is the bias of angular velocity (gyro bias)): 
 
         [ phi  ] 
     x = [phidot]
@@ -41,7 +42,7 @@
            [0    0        1   ]
 
   This implementation assumes no control input model (B). Instead, a normally
-  distributed random angular acceleration (phidotdot) is introduced modelling 
+  distributed random angular acceleration (phidotdot) is introduced modeling 
   the effect of external forces like motors as part of the random process 
   noise (omega):
 
@@ -64,7 +65,7 @@
 
   Moreover, we assume that we can measure the angle from the IMU
   acceleration (phi_m) and the angular velocity (phidot_m) from the gyroscope. 
-  However, we cannot measure the gyro bias. Measurements are modelled as 
+  However, we cannot measure the gyro bias. Measurements are modeled as 
   independent normally distributed random variables to account for
   measurement noise. The covariance matrix R of normally distributed random 
   measuring noise v ~ N(0,R) is defined as:

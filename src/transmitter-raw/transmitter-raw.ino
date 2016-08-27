@@ -45,7 +45,7 @@
 // 1       | +/- 4g           | 8192 LSB/g
 // 2       | +/- 8g           | 4096 LSB/g
 // 3       | +/- 16g          | 2048 LSB/g
-#define RANGE_ACCEL 0
+#define RANGE_ACCEL 1
 
 // The sensitivity and value range of the gyroscope as defined by the
 // following table:
@@ -56,7 +56,7 @@
 // 1      | +/- 500 degrees/s  | 65.5 LSB/deg/s
 // 2      | +/- 1000 degrees/s | 32.8 LSB/deg/s
 // 3      | +/- 2000 degrees/s | 16.4 LSB/deg/s
-#define RANGE_GYRO 0
+#define RANGE_GYRO 1
 
 // Configuration of digital low pass filter of IMU according to the
 // following table:
@@ -75,7 +75,7 @@
 //
 // For instance, if you choose value 6, signals with frequency > 5 Hz
 // will be cut-off.
-#define DLPF 1
+#define DLPF 0
 
 // Start of frame pattern.
 const uint8_t start_of_frame[] = {0x5A, 0xA5};

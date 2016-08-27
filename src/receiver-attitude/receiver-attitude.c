@@ -37,28 +37,42 @@
 // re-synchronized.
 #define MAX_FRAME_ERR 1
 
-// Standard deviations of the Gaussian distributions of measurements.
+// Gravitational acceleration, used to translate g values of accelerometer to
+// acceleration in m/s**2.
+const float grav_accel = 9.81f;
+
+// Sampling period in seconds.
+// Timestamps are sent together with samples. So manually defining the
+// sampling period is not strictly required, but might be useful if
+// recorded timestamps are thought to be inaccurate. In our experiments,
+// there was no significant difference.
+const float sampling_period = 0.005f;
+
+// Standard deviations of the Gaussian distributions of angular measurements.
 // The angle (phi) is only observed indirectly by measuring the 
-// objects acceleration, assuming that acceleration is just due to gravity 
+// objects acceleration, assuming that acceleration is only due to gravity 
 // and thus pointing towards the center of earth. Obviously, this assumption 
-// does not hold if the object is accelerated by other forces than gravity. 
-// Therefore, we assume that in general angular measurements have a quite 
-// broad distribution. 0.003 is the standard deviation of an object at
-// rest calculated from sample measurements.
-const float sigma_phi = 0.003f*10.0f;
-// Angular velocity is measured directly by the gyroscope. The following
-// standard deviation was calculated from sample measurements.
-const float sigma_phidot = 0.0015f;
+// does not hold if the object is accelerated by other forces in addition to 
+// gravity (here, the Kalman filter will prefer angular velocity). 0.004 is 
+// the standard deviation of an object at rest calculated from sample 
+// measurements.
+const float sigma_phi = 0.004f;
 
-// Standard deviation of the Gaussian distribution modelling uncontrolled
+// Standard deviations of the Gaussian distributions of angular velocity
+// measurements. Angular velocity is measured directly by the gyroscope. 
+// 0.003 is the standard deviation calculated from sample measurements.
+const float sigma_phidot = 0.003f;
+
+// Standard deviation of the Gaussian distribution modeling uncontrolled
 // angular acceleration. This noise depends on the external forces (e.g.,
-// due to motors) that accelerate the object around its axes.  
-const float sigma_angularaccel = 1.0f/360.0 * 2.0*M_PI;
+// due to motors, wind, etc.) accelerating the object around its axes.  
+const float sigma_angularaccel = 45.0/360.0 * 2.0*M_PI;
 
-// Standard deviation of the Gaussian distribution modelling uncontrolled
-// change if gyro bias. We can reasonably assume that the gyro bias
-// only fluctuates very little.
-const float sigma_bias = 0.0001f;
+// Standard deviation of the Gaussian distribution modeling uncontrolled
+// change of gyro bias. The Kalman filter can automatically estimate the gyro
+// bias. However, you can set sigma_bias to 0 to switch off automatic bias 
+// estimation.
+const float sigma_bias = 0.000001f;
 
 // The sensitivity and value range of the accelerometer as defined by the
 // following table:
@@ -69,7 +83,7 @@ const float sigma_bias = 0.0001f;
 // 1       | +/- 4g           | 8192 LSB/g
 // 2       | +/- 8g           | 4096 LSB/g
 // 3       | +/- 16g          | 2048 LSB/g
-const float lsb_per_g = 16384.0f;
+const float lsb_per_g = 8192.0f;
 
 // The sensitivity and value range of the gyroscope as defined by the
 // following table:
@@ -80,7 +94,7 @@ const float lsb_per_g = 16384.0f;
 // 1      | +/- 500 degrees/s  | 65.5 LSB/deg/s
 // 2      | +/- 1000 degrees/s | 32.8 LSB/deg/s
 // 3      | +/- 2000 degrees/s | 16.4 LSB/deg/s
-const float lsb_per_degs = 131.0f;
+const float lsb_per_degs = 65.5f;
 
 enum States {synced, unsynced1, unsynced2} state;
 
@@ -214,6 +228,13 @@ void setup_serial(int fd)
           perror("Could not set terminal attributes");
           die(-1);
      }
+
+     // Clear buffers.
+     // Flush only seems to work with some sleep time -- possibly a USB 
+     // problem, see:
+     // http://stackoverflow.com/questions/13013387/clearing-the-serial-ports-buffer
+     sleep(2);  
+     tcflush(fd,TCIOFLUSH);
 }
 
 /**
@@ -235,9 +256,9 @@ void parse_sample(uint8_t *frame, struct Sample *sample)
 
      // Translate raw ADC readings to meaningful acceleration and 
      // angular velocity values in m/s**2 and rad/s, respectively.
-     sample->accel_x = lsb_accel_x/lsb_per_g*9.81f;
-     sample->accel_y = lsb_accel_y/lsb_per_g*9.81f;
-     sample->accel_z = lsb_accel_z/lsb_per_g*9.81f;
+     sample->accel_x = lsb_accel_x/lsb_per_g*grav_accel;
+     sample->accel_y = lsb_accel_y/lsb_per_g*grav_accel;
+     sample->accel_z = lsb_accel_z/lsb_per_g*grav_accel;
 
      sample->gyro_x = lsb_gyro_x/lsb_per_degs/360.0f*2.0f*M_PI;
      sample->gyro_y = lsb_gyro_y/lsb_per_degs/360.0f*2.0f*M_PI;
@@ -247,6 +268,21 @@ void parse_sample(uint8_t *frame, struct Sample *sample)
 	  (((uint32_t) frame[15])<<16) |
 	  (((uint32_t) frame[16])<<8) |
 	  (((uint32_t) frame[17]));
+
+     // If the IMU is not mounted such that the x axis is the roll axis 
+     // and the y axis is the pitch axis, we need to rotate the axes.
+     float tempX = sample->accel_x;
+     float tempY = sample->accel_y;
+     float tempZ = sample->accel_z;
+     sample->accel_x = tempZ;
+     sample->accel_y = tempY;
+     sample->accel_z = -tempX;
+     tempX = sample->gyro_x;
+     tempY = sample->gyro_y;
+     tempZ = sample->gyro_z;
+     sample->gyro_x = tempZ;
+     sample->gyro_y = tempY;
+     sample->gyro_z = -tempX;
 }
 
 /**
@@ -270,6 +306,7 @@ void kalmanfilter_update(struct kf *filter, float phi, float phidot,
      }
 
      kf_update(filter, phi, phidot, t_delta);
+     //kf_update(filter, phi, phidot, sampling_period);
 }
 
 /**
@@ -468,7 +505,7 @@ int main(int argc, char *argv[])
 			      kf_roll.x[1], kf_pitch.x[1], 
 			      kf_roll.x[2], kf_pitch.x[2]);
 #ifdef DEBUG
-			 float rollkf = kf_roll.x[0]/(2.0f*M_PI)*360.0f; 
+			 float rollkf = kf_roll.x[0]/(2.0f*M_PI)*360.0f;
 			 float pitchkf = kf_pitch.x[0]/(2.0f*M_PI)*360.0f;
 			 printf("pitch = %f\troll = %f\n", pitchkf, rollkf);
 #endif

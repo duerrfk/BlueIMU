@@ -56,7 +56,10 @@ void kf_update(struct kf *filter, float phi_m, float phidot_m, float t_delta)
      float S[2][2];
      float Sinv[2][2];
      float K[3][2];
-     float temp[2][2];
+     //float temp[2][2];
+     float temp1[3][2];
+     float temp2[3][3];
+     float KT[2][3];
 
      kf_predict(filter, t_delta, x_pred, P_pred);
 
@@ -105,7 +108,43 @@ void kf_update(struct kf *filter, float phi_m, float phidot_m, float t_delta)
      filter->x[1] = x_pred[1] + (K[1][0]*y[0] + K[1][1]*y[1]);
      filter->x[2] = x_pred[2] + (K[2][0]*y[0] + K[2][1]*y[1]);
 
+     // Updated error estimation: P(k) = P_pred(k) - K(k)*S(k)*KT(k)
+     KT[0][0] = K[0][0];
+     KT[1][0] = K[0][1];
+     KT[0][1] = K[1][0];
+     KT[1][1] = K[1][1];
+     KT[0][2] = K[2][0];
+     KT[1][2] = K[2][1];
+
+     temp1[0][0] = K[0][0]*S[0][0] + K[0][1]*S[1][0];
+     temp1[1][0] = K[1][0]*S[0][0] + K[1][1]*S[1][0];
+     temp1[2][0] = K[2][0]*S[0][0] + K[2][1]*S[1][0];
+     temp1[0][1] = K[0][0]*S[0][1] + K[0][1]*S[1][1];
+     temp1[1][1] = K[1][0]*S[0][1] + K[1][1]*S[1][1];
+     temp1[2][1] = K[2][0]*S[0][1] + K[2][1]*S[1][1];
+
+     temp2[0][0] = temp1[0][0]*KT[0][0] + temp1[0][1]*KT[1][0];
+     temp2[1][0] = temp1[1][0]*KT[0][0] + temp1[1][1]*KT[1][0];
+     temp2[2][0] = temp1[2][0]*KT[0][0] + temp1[2][1]*KT[1][0];
+     temp2[0][1] = temp1[0][0]*KT[0][1] + temp1[0][1]*KT[1][1];
+     temp2[1][1] = temp1[1][0]*KT[0][1] + temp1[1][1]*KT[1][1];
+     temp2[2][1] = temp1[2][0]*KT[0][1] + temp1[2][1]*KT[1][1];
+     temp2[0][2] = temp1[0][0]*KT[0][2] + temp1[0][1]*KT[1][2];
+     temp2[1][2] = temp1[1][0]*KT[0][2] + temp1[1][1]*KT[1][2];
+     temp2[2][2] = temp1[2][0]*KT[0][2] + temp1[2][1]*KT[1][2];
+
+     filter->P[0][0] = P_pred[0][0] - temp2[0][0];
+     filter->P[1][0] = P_pred[1][0] - temp2[1][0];
+     filter->P[2][0] = P_pred[2][0] - temp2[2][0];
+     filter->P[0][1] = P_pred[0][1] - temp2[0][1];
+     filter->P[1][1] = P_pred[1][1] - temp2[1][1];
+     filter->P[2][1] = P_pred[2][1] - temp2[2][1];
+     filter->P[0][2] = P_pred[0][2] - temp2[0][2];
+     filter->P[1][2] = P_pred[1][2] - temp2[1][2];
+     filter->P[2][2] = P_pred[2][2] - temp2[2][2];
+
      // Updated error estimation: P(k) = (I - K(k)*H) * P_pred(k)
+     /*
      temp[0][0] = 1.0f - K[0][0];
      temp[1][0] = 0.0f - K[1][0];
      temp[2][0] = 0.0f - K[2][0];
@@ -138,6 +177,9 @@ void kf_update(struct kf *filter, float phi_m, float phidot_m, float t_delta)
 	  temp[1][2]*P_pred[2][2];
      filter->P[2][2] = temp[2][0]*P_pred[0][2] + temp[2][1]*P_pred[1][2] + 
 	  temp[2][2]*P_pred[2][2];
+     */
+
+
 }
 
 void kf_predict(const struct kf *filter, float t_delta, float x_pred[3], 
