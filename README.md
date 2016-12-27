@@ -1,3 +1,5 @@
+# What is BlueIMU?
+
 BlueIMU is an open-source Inertial Measurement Unit (IMU) with Bluetooth connectivity (serial port profile / SPP). 
 
 The main features of BlueIMU are:
@@ -9,13 +11,13 @@ The main features of BlueIMU are:
 * Fully open source hardware (circuit board / PCB) and software design.
 * Sample application with Kalman filter for calculating attitude (pitch and roll) included. 
 
-The following image shows the BlueIMU board:
+The following image shows the BlueIMU board (the blue board on top; the PCB below carries the LiPo battery):
 
 ![BlueIMU](/images/blueimu.jpg)
 
 # Why Yet Another IMU?
 
-Many wireless IMUs today are based on Bluetooth Low Energy (BLE). Although BLE is optimized for very low energy consumption, it lacks support for higher bandwidth and low latency as required by sensors at higher sampling rates. In particular, the minumum connection interval of 7.5 ms limits the sampling rate of wireless sensors to 133 Hz (if your BLE central device supports such a low connection interval).  
+Many wireless IMUs today are based on Bluetooth Low Energy (BLE). Although BLE is optimized for very low energy consumption, it lacks support for higher bandwidth and low latency as required by sensors at higher sampling rates. In particular, the minimum connection interval of 7.5 ms limits the sampling rate of wireless sensors to 133 Hz (if the BLE central device supports such a low connection interval at all).  
 
 Therefore, BlueIMU uses standard Bluetooth supporting much higher data rates (serial connection at 230400 Baud) to allow for higher sensor sampling rates at 200 Hz and higher.
  
@@ -41,27 +43,20 @@ RST <--  5 6 --> GND
 
 The GY521 module is connected through I2C to the MCU.
 
-An overdischarge protection is included using the ??? voltage monitor. The MCU, IMU, and Bluetooth module will be disconnected from power at about 3.0 V. At about 3.2 V, the LED (charge indicator) goes off to signal a low battery (the GY521 module has another onboard LED to show that the board is still running down to 3.0 V).  
+An overdischarge protection is included using the ??? voltage monitor. The MCU, IMU, and Bluetooth module will be disconnected from power at about 3.0 V. At about 3.3 V, the red LED (charge indicator) goes off to signal a low battery (the GY521 module has another onboard LED to show that the board is still running down to 3.0 V).  
 
-## Programming the Atmega328P
+## Preparing the Atmega328P (Programming Fuses)
 
 Program the following fuses (note that "1" means fuse *not* programmed; "0" means fuse programmed):
 
-Low Power Crystal Oscillator 3-8 MHz, 16k +14k (BOD enabled) 
-* CKSEL 1101 
-* SUT 01
-
-BOD enabled at 2.7 V
-* BODLEVEL 101 
-
-Enable serial programming
-* SPIEN = 0 
-
-Boot reset vector not enabled
-* BOOTRST = 1
-
-External reset not disabled
-* RSTDISBL = 1
+Low Power Crystal Oscillator 3-8 MHz, 16ck+14cl (BOD enabled):
+  
+* CKSEL = 1101, SUT 01: external crystal oscillator 3-8 MHz w/ BOD enabled
+* CKDIV8 = 1: don't divide clock internally by 8
+* SPIEN = 0: enable serial programming
+* BODLEVEL = 101: brown-out detection set to 2.7 V
+* BOOTRST = 1: boot reset vector not enabled
+* RSTDISBL = 1: external reset not disabled:
 
 This results in the following fuse bytes: 
 
@@ -75,15 +70,66 @@ The MCU can be programmed using avrdude as follows:
 $ sudo avrdude -c usbasp -p m328p -U lfuse:w:0xdd:m -U hfuse:w:0xd9:m -U efuse:w:0x05:m
 ```
 
-## Flashing the Software
+## Flashing the Raw Transmitter Software
 
-In folder `src/transmitter-raw` you will find software (Arduino sketch) for BlueIMU transmitting raw sensor values (3 axes acceleration and 3 axes angular velocity) and a timestamp for each sample at a sampling rate of 200 Hz.
+In folder `src/transmitter-raw` you find the raw transmitter software, which programs the BlueIMU to transmits raw measurements from the 3 axis accelerometer and 3 axis gyroscope of the MPU6050 IMU via Bluetooth serial profile (SPP). This software is implemented for the Arduino platform (tested with Arduino IDE 1.6.6) using the MPU6050 and I2C code by Jeff Rowberg.
 
-In folder `arduino_board_definition` you will find the correct board definition for the Atmega328P MCU at 7.3728 MHz. Copy this directory into the folder `hardware` in your Arduino sketchbook.
+In folder `arduino_board_definition` you find the corresponding board definition for the Atmega328P MCU running at 7.3728 MHz. Copy this directory into the folder `hardware` in your Arduino sketchbook.
 
 Then, compile the Arduino sketch from folder `src/transmitter-raw`. This generates a hex file for the Atmega328P MCU. This hex file is a little bit hidden in the temporary build directory of the Arduino IDE. If you use Linux  and Arduino IDE 1.6, have a look at the `/tmp`  directory. After hitting the  compile button in the Arduino IDE, search for the latest hex file called  `transmitte-raw.cpp.hex` in a temporary directory named `/tmp/build...`. If you have found the hex file, you can flash it using avrdude:
 
+```
 $ sudo avrdude -p m328p -c usbasp -v -U flash:w:transmitter-raw.cpp.hex
+```
+
+## Data Format
+
+Raw sensor data is transmitted over a Bluetooth serial connection. The transmitted data stream consists of records of the following format:
+
+* Byte 0..1: Start of Record: 0x5A, 0xA5
+* Byte 2..3: accelerometer X (16 bit signed int)  
+* Byte 4..5: accelerometer Y (16 bit signed int)
+* Byte 6..7: accelerometer Z (16 bit signed int)
+* Byte 8..9: gyro X (16 bit signed int)
+* Byte 10..11: gyro Y (16 bit signed int)
+* Byte 12..13: gyro Z (16 bit signed int)
+* Byte 14..17: sample time stamp (32 bit unsigned integer) in milliseconds since boot time
+* Byte 18..19: 16 bit checksum
+
+All 16 bit words are transmitted in Big Endian format (high byte first, low byte second). 
+
+## Interpreting Raw Values
+
+Values from sensors are transmitted as raw signed 16 bit values. The values can be translated to m/s and deg/s, respectively, depending on the configured sensor sensitivities (+-2g, +-4g, +-8g, +-16g; +-250 deg/s, +-500 deg/s, +- 1000 deg/s, +-2000 deg/s). The following resolutions are supported by the MPU6050 IMU:
+
+* accelerometer: 16384, 8192, 4096, 2048 LSB / (m/s)
+* gyro: 131, 65.5, 32.8, and 16.5 LSB / (deg/s) 
+
+Please have a look at the manual of the MPU6050 for further details.
+
+## Checksum 
+
+The checksum consists of the ones' complement of the ones' complement sum of the 16-bit words, similar to the calculation of the checksum of IP headers. For detailed information on how to calculate the checksum, please have a look at the code. 
+
+## Sampling Rate
+
+The sampling rate can be adjusted by the SAMPLING_PERIOD definition.
+
+## Low-pass Filter
+
+The MPU 6050 features a low-pass filter. You can set the filter by defining DLPF according to the following table:
+
+             |   ACCELEROMETER    |           GYROSCOPE
+    DLPF_CFG | Bandwidth | Delay  | Bandwidth | Delay  | Sample Rate
+    ---------+-----------+--------+-----------+--------+-------------
+    0        | 260Hz     | 0ms    | 256Hz     | 0.98ms | 8kHz
+    1        | 184Hz     | 2.0ms  | 188Hz     | 1.9ms  | 1kHz
+    2        | 94Hz      | 3.0ms  | 98Hz      | 2.8ms  | 1kHz
+    3        | 44Hz      | 4.9ms  | 42Hz      | 4.8ms  | 1kHz
+    4        | 21Hz      | 8.5ms  | 20Hz      | 8.3ms  | 1kHz
+    5        | 10Hz      | 13.8ms | 10Hz      | 13.4ms | 1kHz
+    6        | 5Hz       | 19.0ms | 5Hz       | 18.6ms | 1kHz
+    7        |   -- Reserved --   |   -- Reserved --   | Reserved
 
 # Connecting a Linux host to BlueIMU over Bluetooth
 
@@ -186,13 +232,9 @@ Covariance matrix Q of normally distributed random process noise omega ~ N(0,Q):
 ```
 Q = G*Gtrans*sigma_phidotdot**2 
 
-    [t_delta**4/4  t_delta**3/2  0]
-  = [t_delta**3/2   t_delta**2   0] * sigma_phidotdot**2 +
-    [      0             0       0]
-
-    [ 0 0 0 ]
-    [ 0 0 0 ] * sigma_bias**2
-    [ 0 0 1 ]
+    [t_delta**4/4  t_delta**3/2  0]                        [ 0 0 0 ]
+  = [t_delta**3/2   t_delta**2   0] * sigma_phidotdot**2 + [ 0 0 0 ] * sigma_bias**2 
+    [      0             0       0]                        [ 0 0 1 ]
 ```
 
 Moreover, we assume that we can measure the angle from the IMU acceleration (phi_m) and the angular velocity (phidot_m) from the gyroscope. However, we cannot measure the gyro bias. Measurements are modeled as independent normally distributed random variables to account for measurement noise. The covariance matrix R of normally distributed random measuring noise v ~ N(0,R) is defined as:
@@ -214,3 +256,13 @@ As a comparison, here the angle in radians over time calculated directly from th
 ![Angle pendulum accelerometer](images/angle_pendulum_accelerometer.png)
 
 Observer how the angle calculated just from acceleration is only correct while the object is at rest and clearly wrong when the pendulum moves such that gravity cannot be easily distinguished anymore from the acceleration caused by centripetal force. In that case, the Kalman filter can use the angular velocity to predict the angle leading to much more accurate results.
+
+# License
+
+The BlueIMU software (contents of folders `src`) is licensed under the Apache License, Version 2.0.
+
+The BlueIMU hardware documentation (contents of folder `pcb`) is licensed under the CERN Open Hardware Licence, Version 1.2
+
+Both licenses are included in the repository in the files `LICENSE-SOFTWARE` and `LICENSE-HARDWARE`, respectively.
+
+The BlueIMU software uses the I2Cdev device library and MPU-6050 code by Jeff Rowberg licensed under the MIT license.
