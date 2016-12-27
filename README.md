@@ -1,6 +1,6 @@
 # What is BlueIMU?
 
-BlueIMU is an open-source Inertial Measurement Unit (IMU) with Bluetooth connectivity (serial port profile / SPP). 
+BlueIMU is an Inertial Measurement Unit (IMU) with Bluetooth connectivity (serial port profile / SPP). 
 
 The main features of BlueIMU are:
 
@@ -11,13 +11,13 @@ The main features of BlueIMU are:
 * Fully open source hardware (circuit board / PCB) and software design.
 * Sample application with Kalman filter for calculating attitude (pitch and roll) included. 
 
-The following image shows the BlueIMU board (the blue board on top; the PCB below carries the LiPo battery):
+The following image shows the BlueIMU board.
 
 ![BlueIMU](/images/blueimu.jpg)
 
 # Why Yet Another IMU?
 
-Many wireless IMUs today are based on Bluetooth Low Energy (BLE). Although BLE is optimized for very low energy consumption, it lacks support for higher bandwidth and low latency as required by sensors at higher sampling rates. In particular, the minimum connection interval of 7.5 ms limits the sampling rate of wireless sensors to 133 Hz (if the BLE central device supports such a low connection interval at all).  
+Many wireless IMUs today are based on Bluetooth Low Energy (BLE). Although BLE is optimized for very low energy consumption, it lacks support for higher bandwidth and low latency as required by sensors at higher sampling rates. In particular, the minimum connection interval of 7.5 ms limits the sampling rate of wireless sensors to 133 Hz (if the BLE central device supports such a low connection interval at all and you can fit in all data in tiny frames of 20 bytes).
 
 Therefore, BlueIMU uses standard Bluetooth supporting much higher data rates (serial connection at 230400 Baud) to allow for higher sensor sampling rates at 200 Hz and higher.
  
@@ -72,7 +72,7 @@ $ sudo avrdude -c usbasp -p m328p -U lfuse:w:0xdd:m -U hfuse:w:0xd9:m -U efuse:w
 
 ## Flashing the Raw Transmitter Software
 
-In folder `src/transmitter-raw` you find the raw transmitter software, which programs the BlueIMU to transmits raw measurements from the 3 axis accelerometer and 3 axis gyroscope of the MPU6050 IMU via Bluetooth serial profile (SPP). This software is implemented for the Arduino platform (tested with Arduino IDE 1.6.6) using the MPU6050 and I2C code by Jeff Rowberg.
+In folder `src/transmitter-raw` you find the raw transmitter software, which programs the BlueIMU to transmit raw measurements from the 3 axis accelerometer and 3 axis gyroscope of the MPU6050 IMU via Bluetooth serial profile (SPP). This software is implemented for the Arduino platform (tested with Arduino IDE 1.6.6) using the MPU6050 and I2C code by Jeff Rowberg.
 
 In folder `arduino_board_definition` you find the corresponding board definition for the Atmega328P MCU running at 7.3728 MHz. Copy this directory into the folder `hardware` in your Arduino sketchbook.
 
