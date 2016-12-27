@@ -22,13 +22,15 @@
 #include "MPU6050.h"
 
 // The pin where the LED output of the Bluetooth module is connected.
-// This pin is used to detect the connection status.
-// This pin supports level interrupts to listen for connection status changes.
+// This pin is used to detect the connection status (blinking = disconnected;
+// constantly on = connected). This pin supports level interrupts to listen 
+// for connection status changes.
 #define PIN_LED 2
 
 // Sampling period in microseconds.
-// Note: Depending on the sampling interval, you should also set
-// the digital low-pass filter (see DLPF definition).
+// Note: Depending on the sampling interval, you should set the digital 
+// low-pass filter. Filter cut-off frequencies should not be too low for 
+// a given sampling period (see DLPF definition).
 #define SAMPLING_PERIOD 5000
 
 // The baud rate of the serial connection to the Bluetooth module. 
@@ -300,8 +302,8 @@ void loop()
     switch (state) {
     case disconnected :
         // Wait for Bluetooth connection. 
-        // While disconnected, the LED blinks with a period of 750 ms. 
-        // While connected, the LED is constantly on.
+        // While disconnected, the LED of the Bluetooth module blinks with a 
+        // period of 750 ms. While connected, the LED is constantly on.
         // To detect a connection, we sample the LED with a frequency of 10 Hz.
         // If the LED pin remains high during an interval of 1 s, we assume 
         // that the Bluetooth module is connected. 
@@ -319,9 +321,8 @@ void loop()
         // interrupt, otherwise the timer interrupt might no get detached when the
         // level interrupt fires early.
         Timer1.attachInterrupt(sampling_timer_isr);
-        // If the LED pin goes low, the device is disconnected. 
-        // To detect the disconnection, we use an interrupt 
-        // (the LED is connected to a digital pin supporting interrupts). 
+        // If the Bluetooth module LED pin goes low, the device is disconnected. 
+        // To detect the disconnection, we use a level interrupt on the LED pin. 
         attachInterrupt(digitalPinToInterrupt(PIN_LED), led_isr, LOW);
         break;
     case connected:

@@ -44,17 +44,16 @@ const float grav_accel = 9.81f;
 // Sampling period in seconds.
 // Timestamps are sent together with samples. So manually defining the
 // sampling period is not strictly required, but might be useful if
-// recorded timestamps are thought to be inaccurate. In our experiments,
-// there was no significant difference.
+// recorded timestamps are thought to be inaccurate.
 const float sampling_period = 0.005f;
 
 // Standard deviations of the Gaussian distributions of angular measurements.
 // The angle (phi) is only observed indirectly by measuring the 
 // objects acceleration, assuming that acceleration is only due to gravity 
-// and thus pointing towards the center of earth. Obviously, this assumption 
-// does not hold if the object is accelerated by other forces in addition to 
-// gravity (here, the Kalman filter will prefer angular velocity). 0.004 is 
-// the standard deviation of an object at rest calculated from sample 
+// and thus pointing towards the center of the earth. Obviously, this 
+// assumption does not hold if the object is accelerated by other forces in 
+// addition to gravity. 
+// 0.004 is the standard deviation of an object at rest calculated from sample 
 // measurements.
 const float sigma_phi = 0.004f;
 
@@ -66,16 +65,17 @@ const float sigma_phidot = 0.003f;
 // Standard deviation of the Gaussian distribution modeling uncontrolled
 // angular acceleration. This noise depends on the external forces (e.g.,
 // due to motors, wind, etc.) accelerating the object around its axes.  
-const float sigma_angularaccel = 45.0/360.0 * 2.0*M_PI;
+const float sigma_angularaccel = 50.0/360.0 * 2.0*M_PI;
 
 // Standard deviation of the Gaussian distribution modeling uncontrolled
 // change of gyro bias. The Kalman filter can automatically estimate the gyro
 // bias. However, you can set sigma_bias to 0 to switch off automatic bias 
-// estimation.
+// estimation (bias = 0). Typically, this value should be very small. 
 const float sigma_bias = 0.000001f;
+//const float sigma_bias = 0.0f;
 
 // The sensitivity and value range of the accelerometer as defined by the
-// following table:
+// following table (must match the configuration of the IMU):
 //
 // AFS_SEL | Full Scale Range | LSB Sensitivity
 // --------+------------------+----------------
@@ -86,7 +86,7 @@ const float sigma_bias = 0.000001f;
 const float lsb_per_g = 8192.0f;
 
 // The sensitivity and value range of the gyroscope as defined by the
-// following table:
+// following table (must match the configuration of the IMU):
 //
 // FS_SEL | Full Scale Range   | LSB Sensitivity
 // -------+--------------------+----------------
@@ -111,7 +111,7 @@ struct Sample {
      uint32_t timestamp;
 };
 
-// Start of frame pattern
+// Start of frame pattern.
 const uint8_t start_of_frame[] = {0x5A, 0xA5};
 
 int serial = -1;
@@ -238,7 +238,7 @@ void setup_serial(int fd)
 }
 
 /**
- * Parse a sample transported in a frame.
+ * Parse a sample transmitted in a frame.
  *
  * @param frame the frame containing the sample.
  * @param sample pointer to the allocated sample data structure.
@@ -269,8 +269,24 @@ void parse_sample(uint8_t *frame, struct Sample *sample)
 	  (((uint32_t) frame[16])<<8) |
 	  (((uint32_t) frame[17]));
 
-     // If the IMU is not mounted such that the x axis is the roll axis 
-     // and the y axis is the pitch axis, we need to rotate the axes.
+     // Default mounting orientation of the IMU is as follows:
+     // 
+     // * roll: around x axis
+     // * pitch: around y axis
+     // * yaw: around z axis
+     // 
+     // For roll = pitch = 0, the positive z axis is pointing away from the 
+     // center of the earth.
+     //
+     // If the IMU is mounted differently, we need to rotate the axes.
+     // The code below rotates the axes as follows: 
+     //
+     // * roll: around z axis
+     // * pitch: around y axis
+     // * yaw: around x axis
+     //
+     // For roll = pitch = 0, the positive x axis is pointing towards the 
+     // center of the earth. 
      float tempX = sample->accel_x;
      float tempY = sample->accel_y;
      float tempZ = sample->accel_z;
@@ -305,7 +321,9 @@ void kalmanfilter_update(struct kf *filter, float phi, float phidot,
 	  t_delta = (float) ((0xffffffffUL-t_last_update)+t_sample)/1000.0f;
      }
 
+     // Use sampling period calculated from sample timestamps sent by BlueIMU.
      kf_update(filter, phi, phidot, t_delta);
+     // Alternatively, we can use a pre-defined fixed sampling period.
      //kf_update(filter, phi, phidot, sampling_period);
 }
 
@@ -351,6 +369,25 @@ void printframe(uint8_t *buffer, size_t s)
      printf("\n");
 }
 
+/**
+ * Output data as comma-separated values (CSV) in the following order:
+ *
+ * 1. timestamp [ms]
+ * 2. measured acceleration of x axis (accelerometer x measurement) [m/s**2]
+ * 3. measured acceleration of y axis (accelerometer y measurement) [m/s**2]
+ * 4. measured acceleration of z axis (accelerometer z measurement) [m/s**2]
+ * 5. measured angular velocity of x axis (gyro x measurement) [rad/s]
+ * 6. measured angular velocity of y axis (gyro y measurement) [rad/s]
+ * 7. measured angular velocity of z axis (gyro z measurement) [rad/s]
+ * 8. roll calculated from acceleration measurements [rad]
+ * 9. pitch calculated from acceleration measurements [rad]
+ * 10. roll from Kalman filter [rad]
+ * 11. pitch from Kalman filter [rad]
+ * 12. angular velocity of roll from Kalman filter [rad/s]
+ * 13. angular velocity of pitch from Kalman filter [rad/s]
+ * 14. roll bias from Kalman filter
+ * 15. pitch bias from Kalman filter
+ */
 void flog(FILE *f, uint32_t timestamp, 
 	  float accel_x, float accel_y, float accel_z,
 	  float gyro_x, float gyro_y, float gyro_z,

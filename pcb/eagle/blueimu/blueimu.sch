@@ -15775,6 +15775,9 @@ Source: http://www.onsemi.com/pub/Collateral/LP2950-D.PDF</description>
 - LED goes off at 3.3 V (LED on = battery good)
 - Battery is disconnected from load at 3.0 V (typical value for LiPO)
 </text>
+<text x="-17.78" y="81.28" size="1.778" layer="91">BlueIMU V1.0
+Copyright 2016 Frank Dürr
+Licensed under the CERN Open Hardware Licence 2.0</text>
 </plain>
 <instances>
 <instance part="R1" gate="G$1" x="30.48" y="27.94" rot="R90"/>
