@@ -33,7 +33,7 @@ The following images shows the schematic of the BlueIMU board.
 
 ![Schematic](/images/schematic.png)
 
-The Atmega328P MCU runs at 7.3728 MHz to allow for a perfect timing of the 230400 Baud serial connection to the HC06 Bluetooth module (230400 = 7.3728 MHz/32). Besides the serial connection, the HC06 module signals the Bluetooth connection state through a pin changing with a period of 750 ms while not connected and being constantly high while connected. 
+The Atmega328P MCU runs at 7.3728 MHz to allow for a perfect timing of the 230400 Baud serial connection to the HC06 Bluetooth module (230400 = 7.3728 MHz/32). Besides the serial connection, the HC06 module signals the Bluetooth connection state through a pin changing with a period of 750 ms while not connected and being constantly high while connected. Note that you need to porgram the HC06 module to use 230400 Baud using AT commands sent via the (wired) serial connection to the module (details can be found in the HC06 documentation).
 
 A 6 pin connector is used to connect an in-system programmer with the following common pinout:
 
@@ -45,20 +45,18 @@ RST <--  5 6 --> GND
 
 The GY521 module is connected through I2C to the MCU. It is soldered to the BlueIMU board using a 8 pin header providing for a rigid physical connection of the IMU to the BlueIMU board.
 
-An overdischarge protection is included using the ??? voltage monitor. The MCU, IMU, and Bluetooth module will be disconnected from power at about 3.0 V. At about 3.3 V, the red LED (charge indicator) goes off to signal a low battery (the GY521 module has another onboard LED to show that the board is still running down to 3.0 V).  
+An overdischarge protection is included using the MAXIM ICL7665 voltage monitor. The MCU, IMU, and Bluetooth module will be disconnected from power at about 3.0 V. At about 3.3 V, the red LED (charge indicator) goes off to signal a low battery (the GY521 module has another onboard LED to show that the board is still running down to 3.0 V).  
 
 ## Preparing the Atmega328P (Programming Fuses)
 
 Program the following fuses (note that "1" means fuse *not* programmed; "0" means fuse programmed):
-
-Low Power Crystal Oscillator 3-8 MHz, 16ck+14cl (BOD enabled):
   
-* CKSEL = 1101, SUT 01: external crystal oscillator 3-8 MHz w/ BOD enabled
-* CKDIV8 = 1: don't divide clock internally by 8
-* SPIEN = 0: enable serial programming
-* BODLEVEL = 101: brown-out detection set to 2.7 V
-* BOOTRST = 1: boot reset vector not enabled
-* RSTDISBL = 1: external reset not disabled:
+* CKSEL = 1101, SUT 01: external crystal oscillator 3-8 MHz with fast startup times (BOD is enabled).
+* CKDIV8 = 1: don't divide clock internally by 8.
+* SPIEN = 0: enable serial programming.
+* BODLEVEL = 101: brown-out detection set to 2.7 V.
+* BOOTRST = 1: boot reset vector not enabled.
+* RSTDISBL = 1: external reset not disabled.
 
 This results in the following fuse bytes: 
 
@@ -74,7 +72,7 @@ $ sudo avrdude -c usbasp -p m328p -U lfuse:w:0xdd:m -U hfuse:w:0xd9:m -U efuse:w
 
 ## Flashing the Raw Transmitter Software
 
-In folder `src/transmitter-raw` you find the raw transmitter software, which programs the BlueIMU to transmit raw measurements from the 3 axis accelerometer and 3 axis gyroscope of the MPU6050 IMU via Bluetooth serial profile (SPP). This software is implemented for the Arduino platform (tested with Arduino IDE 1.6.6) using the MPU6050 and I2C code by Jeff Rowberg.
+In folder `src/transmitter-raw` you find the raw transmitter software, which programs the BlueIMU to transmit raw measurements from the 3 axes accelerometer and 3 axes gyroscope of the MPU6050 IMU via Bluetooth serial profile (SPP). This software is implemented for the Arduino platform (tested with Arduino IDE 1.6.6) using the MPU6050 and I2C libraries by Jeff Rowberg.
 
 In folder `arduino_board_definition` you find the corresponding board definition for the Atmega328P MCU running at 7.3728 MHz. Copy this directory into the folder `hardware` in your Arduino sketchbook.
 
@@ -102,9 +100,9 @@ All 16 bit words are transmitted in Big Endian format (high byte first, low byte
 
 ## Interpreting Raw Values
 
-Values from sensors are transmitted as raw signed 16 bit values. The values can be translated to m/s and deg/s, respectively, depending on the configured sensor sensitivities (+-2g, +-4g, +-8g, +-16g; +-250 deg/s, +-500 deg/s, +- 1000 deg/s, +-2000 deg/s). The following resolutions are supported by the MPU6050 IMU:
+Values from sensors are transmitted as raw signed 16 bit values. The values can be translated to g and deg/s, respectively, depending on the configured sensor sensitivities (+-2g, +-4g, +-8g, +-16g; +-250 deg/s, +-500 deg/s, +- 1000 deg/s, +-2000 deg/s). The following resolutions are supported by the MPU6050 IMU:
 
-* accelerometer: 16384, 8192, 4096, 2048 LSB / (m/s)
+* accelerometer: 16384, 8192, 4096, 2048 LSB / g
 * gyro: 131, 65.5, 32.8, and 16.5 LSB / (deg/s) 
 
 Please have a look at the manual of the MPU6050 for further details.
@@ -133,7 +131,7 @@ The MPU 6050 features a low-pass filter. You can set the filter by defining DLPF
     6        | 5Hz       | 19.0ms | 5Hz       | 18.6ms | 1kHz
     7        |   -- Reserved --   |   -- Reserved --   | Reserved
 
-# Connecting a Linux host to BlueIMU over Bluetooth
+# Connecting a Linux Host to BlueIMU over Bluetooth
 
 You can connect a Linux host to the BlueIMU board via Bluetooth as follows:
 
