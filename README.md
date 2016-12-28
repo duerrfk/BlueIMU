@@ -11,7 +11,7 @@ The main features of BlueIMU are:
 * Fully open source hardware (circuit board / PCB) and software design.
 * Sample application with Kalman filter for calculating attitude (pitch and roll) included. 
 
-The following image shows the BlueIMU board.
+The following image shows the BlueIMU board. The GY521 IMU module is the little blue board on the left; the green board is the HC06 Bluetooth module.
 
 ![BlueIMU](/images/blueimu.jpg)
 
