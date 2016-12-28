@@ -1,13 +1,13 @@
 # What is BlueIMU?
 
-BlueIMU is an Inertial Measurement Unit (IMU) with Bluetooth connectivity (serial port profile / SPP). 
+BlueIMU is an Inertial Measurement Unit (IMU) with 6 degrees of freedom and Bluetooth connectivity (serial port profile / SPP). 
 
 The main features of BlueIMU are:
 
-* Based on inexpensive, easily available hardware components, namely, the 6 degree of freedom GY521 IMU module featuring an InvenSense MPU-6050 sensor, the HC06 Bluetooth module, and an Atmega328P microcontroller. 
-* Can run from a single cell LiPo battery (overdischarge protection included in the design). 
-* Raw sensor values can be transmitted at sampling rates of 200 Hz and higher.
-* Software is based on the Arduino IDE and can be easily modified.
+* Based on inexpensive, easily available hardware components, namely, the 6 degrees of freedom GY521 IMU module featuring an InvenSense MPU-6050 sensor, the HC06 Bluetooth module, and an Atmega328P microcontroller. 
+* Runs from a single cell LiPo battery. An overdischarge protection is included in the design. 
+* Raw sensor values can be transmitted at sampling rates of 200 Hz and higher through a 230400 Baud wireless serial connection (Bluetooth SPP).
+* The BlueIMU software is based on the Arduino IDE and can be easily modified.
 * Fully open source hardware (circuit board / PCB) and software design.
 * Sample application with Kalman filter for calculating attitude (pitch and roll) included. 
 
@@ -15,23 +15,25 @@ The following image shows the BlueIMU board.
 
 ![BlueIMU](/images/blueimu.jpg)
 
+Note that BlueIMU uses a 6 degrees of freedom IMU with a 3 axes accelerometer and 3 axes gyroscope, but without a magnetometer (compass). This is sufficient for sensing the pitch and roll, for instance, for controlling the attitude of a drone. However, we cannot sense the yaw to navigate a drone. However, the design could be easily adapted to use a 9 degrees of freedom IMU such as the InvenSense MPU-9250 on the GY-9250 module (GY521 and GY-9250 both use I2C for connecting to the MCU, but the GY-9250 requires 10 instead of 8 header pins to connect to the BlueIMU board).
+ 
 # Why Yet Another IMU?
 
-Many wireless IMUs today are based on Bluetooth Low Energy (BLE). Although BLE is optimized for very low energy consumption, it lacks support for higher bandwidth and low latency as required by sensors at higher sampling rates. In particular, the minimum connection interval of 7.5 ms limits the sampling rate of wireless sensors to 133 Hz (if the BLE central device supports such a low connection interval at all and you can fit in all data in tiny frames of 20 bytes).
+Many wireless IMUs today are based on Bluetooth Low Energy (BLE). Although BLE is optimized for very low energy consumption, it lacks support for higher data rates and low latency as required by sensors at higher sampling rates. In particular, the minimum connection interval of 7.5 ms inherently limits the sampling rate of wireless BLE sensors to about 133 Hz, and together with the small frames of only 20 bytes payload, the data rate is limited. Therefore, BLE is a great technology if you strive for years of battery lifetime at moderate data rates, however, for higher data rates and sensor sampling rates, standard Bluetooth is the better choice.
 
-Therefore, BlueIMU uses standard Bluetooth supporting much higher data rates (serial connection at 230400 Baud) to allow for higher sensor sampling rates at 200 Hz and higher.
- 
+Therefore, BlueIMU uses standard Bluetooth supporting higher data rates (230400 Baud serial connection) to allow for higher sensor sampling rates at 200 Hz and higher.
+
 # Hardware Design
 
 The design of the BlueIMU circuit board (PCB) can be found in folder `pcb` (Eagle schematics and board design as well as Gerber files for production at a PCB house are included). 
   
-BlueIMU is based on easily available low-cost components such as the GY521 IMU featuring a 6 degrees of freedom InvenSense MPU-6050 sensor, the HC06 Bluetooth board, and the Atmega328P microcontroller, which is well-supported by the popular Arduino platform.
+BlueIMU is based on easily available low-cost components such as the GY521 IMU featuring a 6 degrees of freedom (3x accelerometer, 3x gyroscope) InvenSense MPU-6050 sensor, a HC06 Bluetooth module, and an Atmega328P microcontroller (MCU), which is well-supported by the popular Arduino platform.
 
 The following images shows the schematic of the BlueIMU board.
 
 ![Schematic](/images/schematic.png)
 
-The Atmega328P microcontroller (MCU) runs at 7.3728 MHz to allow for a perfect timing of the 230400 Baud serial connection to the HC06 Bluetooth module (230400 = 7.3728 MHz/32). Besides the serial connection, the HC06 module signals the Bluetooth connection state through a pin changing with a period of 750 ms while not connected and being constantly high while connected. 
+The Atmega328P MCU runs at 7.3728 MHz to allow for a perfect timing of the 230400 Baud serial connection to the HC06 Bluetooth module (230400 = 7.3728 MHz/32). Besides the serial connection, the HC06 module signals the Bluetooth connection state through a pin changing with a period of 750 ms while not connected and being constantly high while connected. 
 
 A 6 pin connector is used to connect an in-system programmer with the following common pinout:
 
@@ -41,7 +43,7 @@ SCK <--  3 4 --> MOSI
 RST <--  5 6 --> GND
 ```
 
-The GY521 module is connected through I2C to the MCU.
+The GY521 module is connected through I2C to the MCU. It is soldered to the BlueIMU board using a 8 pin header providing for a rigid physical connection of the IMU to the BlueIMU board.
 
 An overdischarge protection is included using the ??? voltage monitor. The MCU, IMU, and Bluetooth module will be disconnected from power at about 3.0 V. At about 3.3 V, the red LED (charge indicator) goes off to signal a low battery (the GY521 module has another onboard LED to show that the board is still running down to 3.0 V).  
 
